@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "browser": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.mjs"],
+      "env": {
+        "CHROMELEON_BROWSER": "${user_config.browser_path}"
+      }
+    }
+  }
+}

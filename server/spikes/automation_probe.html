@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>automation probe</title>
+</head>
+<body>
+<!--
+  What a page can see of the program driving the browser. Served by a runner
+  (spike_signals.mjs, beside it) that compares a launch
+  with no debugging switch against launches driven over CDP. Query: mode (a
+  label echoed back), ms (how long the console traps keep firing, default
+  8000). Results are POSTed as JSON to /result on the same origin.
+-->
+<h1>Automation probe</h1>
+<p id="status">running</p>
+<label>Field <input id="field" autocomplete="off"></label>
+<button id="btn">Press me</button>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const out = { mode: params.get('mode') || 'unknown', checks: {}, traps: {}, input: {}, errors: [] };
+  const windowMs = Number(params.get('ms') || 8000);
+  const put = (key, read) => {
+    try { out.checks[key] = read(); } catch (e) { out.errors.push(`${key}: ${e.message}`); }
+  };
+
+  // Things a page reads directly.
+  put('webdriver', () => navigator.webdriver);
+  put('userAgentSaysHeadless', () => /Headless/i.test(navigator.userAgent));
+  put('brands', () => (navigator.userAgentData?.brands || []).map((b) => b.brand).join(','));
+  put('outerMinusInnerHeight', () => outerHeight - innerHeight);
+  put('outerMinusInnerWidth', () => outerWidth - innerWidth);
+  put('outerIsZero', () => outerWidth === 0 || outerHeight === 0);
+  put('screen', () => `${screen.width}x${screen.height} avail ${screen.availWidth}x${screen.availHeight}`);
+  put('devicePixelRatio', () => devicePixelRatio);
+  put('plugins', () => navigator.plugins.length);
+  put('mimeTypes', () => navigator.mimeTypes.length);
+  put('languages', () => navigator.languages.join(','));
+  put('windowChromeKeys', () => (window.chrome ? Object.keys(window.chrome).sort().join(',') : 'none'));
+  put('notificationPermission', () => Notification.permission);
+  put('hasFocusAtLoad', () => document.hasFocus());
+  put('visibilityAtLoad', () => document.visibilityState);
+  put('connectionRtt', () => navigator.connection?.rtt);
+  put('hardwareConcurrency', () => navigator.hardwareConcurrency);
+  put('deviceMemory', () => navigator.deviceMemory);
+  put('webglRenderer', () => {
+    const gl = document.createElement('canvas').getContext('webgl');
+    return gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL);
+  });
+  // Globals a driver might leave (a fresh frame's window is the reference).
+  put('extraGlobals', () => {
+    const f = document.createElement('iframe');
+    f.style.display = 'none';
+    document.body.appendChild(f);
+    const clean = new Set(Object.getOwnPropertyNames(f.contentWindow));
+    f.remove();
+    return Object.getOwnPropertyNames(window).filter((k) => !clean.has(k)).sort().join(',');
+  });
+  put('documentOwnKeys', () => Object.keys(document).join(','));
+  // Chrome ignores history.replaceState() calls past 200 in 10 s (IPC
+  // flooding protection); --disable-ipc-flooding-protection lets all through.
+  put('replaceStateAccepted', () => {
+    const original = location.href;
+    let accepted = 0;
+    for (let i = 0; i < 250; i++) {
+      history.replaceState(null, '', `#r${i}`);
+      if (location.hash === `#r${i}`) accepted++;
+    }
+    history.replaceState(null, '', original);
+    return accepted;
+  });
+
+  // Console traps: with the Runtime domain enabled, the inspector builds a
+  // preview of each logged argument when it is logged, and a preview that
+  // touches a getter or a proxy trap runs page code.
+  const hits = {};
+  const hit = (k) => { hits[k] = (hits[k] || 0) + 1; };
+  let debuggerMaxMs = 0;
+  function fireTraps() {
+    const e1 = new Error('probe');
+    Object.defineProperty(e1, 'stack', { configurable: true, get() { hit('errorStackGetter'); return 'x'; } });
+    console.debug(e1);
+    const e2 = new Error('probe');
+    Object.defineProperty(e2, 'message', { configurable: true, get() { hit('errorMessageGetter'); return 'm'; } });
+    console.debug(e2);
+    const o = {};
+    Object.defineProperty(o, 'p', { enumerable: true, get() { hit('objectGetter'); return 1; } });
+    console.debug(o);
+    const a = [];
+    Object.defineProperty(a, '0', { enumerable: true, get() { hit('arrayIndexGetter'); return 1; } });
+    console.debug(a);
+    const t = { get [Symbol.toStringTag]() { hit('toStringTagGetter'); return 'T'; } };
+    console.debug(t);
+    const c = {};
+    Object.defineProperty(c, 'constructor', { get() { hit('constructorGetter'); return Object; } });
+    console.debug(c);
+    console.debug(new Proxy({}, {
+      ownKeys(x) { hit('proxyOwnKeys'); return Reflect.ownKeys(x); },
+      get(x, k) { hit('proxyGet'); return Reflect.get(x, k); },
+      getOwnPropertyDescriptor(x, k) { hit('proxyDescriptor'); return Reflect.getOwnPropertyDescriptor(x, k); },
+      getPrototypeOf(x) { hit('proxyGetPrototypeOf'); return Reflect.getPrototypeOf(x); },
+    }));
+    const t0 = performance.now();
+    debugger;
+    debuggerMaxMs = Math.max(debuggerMaxMs, performance.now() - t0);
+  }
+
+  // Input as the page receives it.
+  let moves = 0;
+  let untrusted = 0;
+  const keyTimes = [];
+  addEventListener('mousemove', (e) => { moves++; if (!e.isTrusted) untrusted++; }, true);
+  const btn = document.getElementById('btn');
+  btn.addEventListener('click', (e) => {
+    const r = btn.getBoundingClientRect();
+    out.input.click = {
+      isTrusted: e.isTrusted,
+      movesBefore: moves,
+      offsetFromCentre: [Math.round(e.clientX - (r.left + r.width / 2)), Math.round(e.clientY - (r.top + r.height / 2))],
+      screenMinusClient: [e.screenX - e.clientX, e.screenY - e.clientY],
+      pointerType: e.pointerType,
+    };
+  });
+  const field = document.getElementById('field');
+  field.addEventListener('keydown', (e) => { keyTimes.push(performance.now()); if (!e.isTrusted) untrusted++; });
+
+  const timer = setInterval(fireTraps, 250);
+  fireTraps();
+  setTimeout(async () => {
+    clearInterval(timer);
+    out.traps = hits;
+    out.checks.debuggerStatementMaxMs = Math.round(debuggerMaxMs);
+    out.checks.hasFocusAtEnd = document.hasFocus();
+    out.checks.visibilityAtEnd = document.visibilityState;
+    try {
+      out.checks.notificationsQuery = (await navigator.permissions.query({ name: 'notifications' })).state;
+    } catch (e) { out.errors.push(`notificationsQuery: ${e.message}`); }
+    try {
+      out.checks.mediaDevices = (await navigator.mediaDevices.enumerateDevices()).map((d) => d.kind).sort().join(',');
+    } catch (e) { out.errors.push(`mediaDevices: ${e.message}`); }
+    out.checks.voices = speechSynthesis.getVoices().length;
+    const gaps = keyTimes.slice(1).map((t, i) => t - keyTimes[i]);
+    out.input.mouseMoves = moves;
+    out.input.untrustedEvents = untrusted;
+    out.input.keydowns = keyTimes.length;
+    if (gaps.length) {
+      out.input.keyGapMs = [Math.round(Math.min(...gaps)), Math.round(Math.max(...gaps))];
+    }
+    out.input.fieldValue = field.value;
+    await fetch('/result', { method: 'POST', body: JSON.stringify(out) });
+    document.getElementById('status').textContent = 'done';
+    document.title = 'done';
+  }, windowMs);
+})();
+</script>
+</body>
+</html>
