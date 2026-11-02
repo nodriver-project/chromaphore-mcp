@@ -1,0 +1,5 @@
+# LF everywhere, whatever a clone's core.autocrlf says: the plugin is cloned
+# by Claude Code on Windows, macOS and Linux alike.
+* text=auto eol=lf
+*.ico binary
+*.png binary
