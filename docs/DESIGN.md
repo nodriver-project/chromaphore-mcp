@@ -19,7 +19,7 @@ Always (`server/src/browser.ts`, `BASE_SWITCHES`):
 - `--private-clipboard`: the browser's own clipboard, so the machine's (the user's) is never read or overwritten; `paste` uses it.
 - `--disable-auto-reload`: a network-error page stays as it is instead of reloading itself unseen.
 - `--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`, `--disable-background-timer-throttling`: tabs the agent is not looking at keep running at full speed.
-- `--disable-features=AimEnabled,Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync`: AI Mode's eligibility request to google.com at every launch (the browser's own preset disables it from Chromeleon 1.0.0 on); no hidden prerendered pages or extra targets under the agent; background processes off Windows' efficiency mode.
+- `--disable-features=Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync`: no hidden prerendered pages or extra targets under the agent; background processes off Windows' efficiency mode. (AI Mode's eligibility request to google.com at every launch, `AimEnabled`, the browser's own preset disables from Chromeleon 1.0.0 on.)
 - Headless only: `--headless=new`, `--mute-audio`, `--enable-gpu`, `--fingerprint-screen=auto`, `--fingerprint-screen-position=auto` (the seed's screen; headed shows the real monitor and window, which must agree).
 
 Never: `--enable-automation` (shows the "controlled by automated test software" bar), `--disable-ipc-flooding-protection` (a page can count `history.replaceState()` calls: Chrome lets 200 through in 10 s, the switch all of them), `--disable-renderer-accessibility` (starves the page snapshot), `--remote-debugging-port` (the pipe replaces it).

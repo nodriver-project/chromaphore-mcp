@@ -28,7 +28,7 @@ export const BASE_SWITCHES = [
   '--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',
   '--disable-background-timer-throttling',
-  '--disable-features=AimEnabled,Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync',
+  '--disable-features=Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync',
 ];
 
 export function headSwitches(headless) {

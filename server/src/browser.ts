@@ -45,13 +45,11 @@ const BASE_SWITCHES = [
   '--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',
   '--disable-background-timer-throttling',
-  // Merged by the browser with its preset's list. Prerender2: no hidden
-  // prerendered pages or extra targets under the agent.
-  // UseEcoQoSForBackgroundProcess: background tabs off Windows' efficiency
-  // mode. AimEnabled (AI Mode's eligibility request to google.com at every
-  // launch) goes once the oldest browser accepted has it in its preset
-  // (Chromeleon 1.0.0).
-  '--disable-features=AimEnabled,Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync',
+  // Merged by the browser with its preset's list (which disables AimEnabled
+  // itself from Chromeleon 1.0.0 on). Prerender2: no hidden prerendered pages
+  // or extra targets under the agent. UseEcoQoSForBackgroundProcess:
+  // background tabs off Windows' efficiency mode.
+  '--disable-features=Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync',
 ];
 
 export interface Dialog {
