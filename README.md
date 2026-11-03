@@ -1,5 +1,7 @@
 # chromeleon-mcp
-**Support:** [Discord](https://discord.gg/EdRx3832Hw) · [Discussions](https://github.com/nodriver-project/chromeleon-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromeleon-Browser/releases)
+[![Discord](https://img.shields.io/discord/1499516872758923264?logo=discord&label=Discord)](https://discord.gg/EdRx3832Hw)
+
+**Support:**  [Discussions](https://github.com/nodriver-project/chromeleon-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromeleon-Browser/releases)
 
 A Claude Code plugin that drives the [Chromeleon browser](https://github.com/pppi21/Chromeleon-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
 
