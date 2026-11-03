@@ -1,7 +1,7 @@
 {
   "name": "chromeleon-mcp-server",
   "license": "Apache-2.0",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Source of the chromeleon plugin's MCP server; bundled into plugin/dist/server.js.",

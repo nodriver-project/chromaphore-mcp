@@ -1,7 +1,7 @@
 {
   "name": "chromeleon",
   "displayName": "Chromeleon Browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drive the Chromeleon browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
   "author": {
     "name": "Chromeleon"

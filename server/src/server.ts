@@ -7,9 +7,9 @@ import * as act from './actions.js';
 import { Browser, ToolError } from './browser.js';
 import * as whole from './browser_tools.js';
 import { CdpError } from './cdp.js';
-import { install } from './install.js';
+import { checkInstall, install } from './install.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 const INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
@@ -52,20 +52,27 @@ server.registerTool(
   {
     title: 'Install the browser',
     description:
-      'Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon. Ask the user before calling it. Not needed when a browser path is set in the plugin settings.',
-    inputSchema: {},
+      'Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.',
+    inputSchema: {
+      check_only: z
+        .boolean()
+        .optional()
+        .describe('Report the installed release and the latest one on GitHub; download nothing.'),
+    },
   },
-  (_args, extra) =>
+  (args, extra) =>
     guard(() =>
-      install((done, total, message) => {
-        const token = extra._meta?.progressToken;
-        if (token !== undefined) {
-          void extra.sendNotification({
-            method: 'notifications/progress',
-            params: { progressToken: token, progress: done, total, message },
-          });
-        }
-      }, extra.signal),
+      args.check_only
+        ? checkInstall()
+        : install((done, total, message) => {
+            const token = extra._meta?.progressToken;
+            if (token !== undefined) {
+              void extra.sendNotification({
+                method: 'notifications/progress',
+                params: { progressToken: token, progress: done, total, message },
+              });
+            }
+          }, extra.signal),
     ),
 );
 

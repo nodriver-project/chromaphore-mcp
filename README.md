@@ -34,7 +34,7 @@ Claude Code asks before every tool call of a new plugin. To let the browser tool
 
 | Tool | What it does |
 |---|---|
-| `browser_install` | Downloads and unpacks the latest release, checked against its published SHA-256 |
+| `browser_install` | Downloads and unpacks the latest release, checked against its published SHA-256, replacing an older one; `check_only` reports what is installed and what the latest release is, and downloads nothing |
 | `browser_open` / `browser_close` | Launches with a new or existing profile, a fixed or random fingerprint seed, with or without a window |
 | `tab_list` / `tab_new` / `tab_select` / `tab_close` | Tabs, including those the page opens |
 | `navigate` | A URL, back, forward or reload; answers with the settled page's listing |

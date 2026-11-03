@@ -65,6 +65,38 @@ function run(cmd: string, args: string[]): Promise<void> {
   });
 }
 
+// What is installed, and what the latest release on GitHub is; downloads
+// nothing. The install skill calls it first, so it asks about a download
+// only when there would be one.
+export async function checkInstall(): Promise<string> {
+  const lines: string[] = [];
+  const configured = process.env.CHROMELEON_BROWSER?.trim();
+  if (configured && !configured.includes('${')) {
+    const there = fs.existsSync(configured) ? '' : ' (that file does not exist)';
+    lines.push(`The plugin settings name a browser of their own: ${configured}${there}. browser_open uses it, not an installed release.`);
+  }
+  const current = installedBrowser();
+  const currentOk = current !== null && fs.existsSync(current.exe);
+  if (current && currentOk) lines.push(`Installed: release ${current.tag} (${current.exe}).`);
+  else if (current) lines.push(`The install record names release ${current.tag}, but its chrome.exe is gone (${current.exe}).`);
+  else lines.push('No release is installed.');
+  try {
+    const { tag, asset } = await latestRelease();
+    if (currentOk && current!.tag === tag) {
+      lines.push(`That is the latest release on GitHub: browser_install would download nothing.`);
+    } else {
+      const replace = currentOk ? ` and replace ${current!.tag} (its folder is removed; profiles stay)` : '';
+      lines.push(
+        `The latest release on GitHub is ${tag}: browser_install would download ${asset.name} ` +
+          `(${Math.round(asset.size / 1e6)} MB)${replace}.`,
+      );
+    }
+  } catch (e) {
+    lines.push(`GitHub could not be asked for the latest release: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return lines.join('\n');
+}
+
 export async function install(progress: Progress, signal: AbortSignal): Promise<string> {
   const { tag, asset } = await latestRelease();
   const current = installedBrowser();

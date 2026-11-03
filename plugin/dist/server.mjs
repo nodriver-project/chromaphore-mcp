@@ -37903,6 +37903,33 @@ function run(cmd, args) {
     p.on("exit", (code) => code === 0 ? resolve2() : reject(new Error(`${path5.basename(cmd)} failed: ${err.trim()}`)));
   });
 }
+async function checkInstall() {
+  const lines = [];
+  const configured = process.env.CHROMELEON_BROWSER?.trim();
+  if (configured && !configured.includes("${")) {
+    const there = fs5.existsSync(configured) ? "" : " (that file does not exist)";
+    lines.push(`The plugin settings name a browser of their own: ${configured}${there}. browser_open uses it, not an installed release.`);
+  }
+  const current2 = installedBrowser();
+  const currentOk = current2 !== null && fs5.existsSync(current2.exe);
+  if (current2 && currentOk) lines.push(`Installed: release ${current2.tag} (${current2.exe}).`);
+  else if (current2) lines.push(`The install record names release ${current2.tag}, but its chrome.exe is gone (${current2.exe}).`);
+  else lines.push("No release is installed.");
+  try {
+    const { tag, asset } = await latestRelease();
+    if (currentOk && current2.tag === tag) {
+      lines.push(`That is the latest release on GitHub: browser_install would download nothing.`);
+    } else {
+      const replace = currentOk ? ` and replace ${current2.tag} (its folder is removed; profiles stay)` : "";
+      lines.push(
+        `The latest release on GitHub is ${tag}: browser_install would download ${asset.name} (${Math.round(asset.size / 1e6)} MB)${replace}.`
+      );
+    }
+  } catch (e) {
+    lines.push(`GitHub could not be asked for the latest release: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return lines.join("\n");
+}
 async function install(progress, signal) {
   const { tag, asset } = await latestRelease();
   const current2 = installedBrowser();
@@ -37949,7 +37976,7 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.1.0";
+var VERSION = "0.1.1";
 var INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
@@ -37981,11 +38008,13 @@ server.registerTool(
   "browser_install",
   {
     title: "Install the browser",
-    description: "Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon. Ask the user before calling it. Not needed when a browser path is set in the plugin settings.",
-    inputSchema: {}
+    description: "Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.",
+    inputSchema: {
+      check_only: external_exports.boolean().optional().describe("Report the installed release and the latest one on GitHub; download nothing.")
+    }
   },
-  (_args, extra) => guard(
-    () => install((done, total, message) => {
+  (args, extra) => guard(
+    () => args.check_only ? checkInstall() : install((done, total, message) => {
       const token = extra._meta?.progressToken;
       if (token !== void 0) {
         void extra.sendNotification({
