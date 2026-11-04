@@ -1,12 +1,12 @@
 {
   "name": "chromeleon",
   "displayName": "Chromeleon Browser",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drive the Chromeleon browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
   "author": {
     "name": "Chromeleon"
   },
-  "repository": "https://github.com/pppi21/chromeleon-mcp",
+  "repository": "https://github.com/nodriver-project/chromeleon-mcp",
   "license": "Apache-2.0",
   "keywords": ["browser", "automation", "testing", "cdp"],
   "userConfig": {

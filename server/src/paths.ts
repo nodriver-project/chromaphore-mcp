@@ -10,6 +10,8 @@ export const DATA_ROOT = path.join(
   'Chromeleon',
 );
 export const PROFILES_DIR = path.join(DATA_ROOT, 'profiles');
+// Temporary profiles, each deleted when its browser exits.
+export const TEMP_PROFILES_DIR = path.join(DATA_ROOT, 'temp');
 export const BROWSERS_DIR = path.join(DATA_ROOT, 'browser');
 export const CURRENT_FILE = path.join(DATA_ROOT, 'current.json');
 
@@ -37,9 +39,9 @@ export function installedBrowser(): Installed | null {
   }
 }
 
-export function newProfileDir(): string {
+export function newProfileDir(temp = false): string {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const dir = path.join(PROFILES_DIR, `${stamp}-${Math.random().toString(16).slice(2, 6)}`);
+  const dir = path.join(temp ? TEMP_PROFILES_DIR : PROFILES_DIR, `${stamp}-${Math.random().toString(16).slice(2, 6)}`);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

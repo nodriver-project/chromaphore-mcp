@@ -7242,18 +7242,21 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs6, exportName) {
+    function addFormats(ajv, list, fs7, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs6[f]);
+        ajv.addFormat(f, fs7[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.default = formatsPlugin;
   }
 });
+
+// src/server.ts
+import fs6 from "node:fs";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -36762,6 +36765,7 @@ var DATA_ROOT = path.join(
   "Chromeleon"
 );
 var PROFILES_DIR = path.join(DATA_ROOT, "profiles");
+var TEMP_PROFILES_DIR = path.join(DATA_ROOT, "temp");
 var BROWSERS_DIR = path.join(DATA_ROOT, "browser");
 var CURRENT_FILE = path.join(DATA_ROOT, "current.json");
 function browserExe() {
@@ -36777,9 +36781,9 @@ function installedBrowser() {
     return null;
   }
 }
-function newProfileDir() {
+function newProfileDir(temp = false) {
   const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-  const dir = path.join(PROFILES_DIR, `${stamp2}-${Math.random().toString(16).slice(2, 6)}`);
+  const dir = path.join(temp ? TEMP_PROFILES_DIR : PROFILES_DIR, `${stamp2}-${Math.random().toString(16).slice(2, 6)}`);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -36861,10 +36865,11 @@ var Tab = class {
   }
 };
 var Browser = class _Browser {
-  constructor(conn, pid, profile, headless, downloads) {
+  constructor(conn, pid, profile, temp, headless, downloads) {
     this.conn = conn;
     this.pid = pid;
     this.profile = profile;
+    this.temp = temp;
     this.headless = headless;
     this.downloads = downloads;
     conn.on((e) => this.onEvent(e));
@@ -36872,6 +36877,7 @@ var Browser = class _Browser {
   conn;
   pid;
   profile;
+  temp;
   headless;
   downloads;
   tabs = /* @__PURE__ */ new Map();
@@ -36896,7 +36902,11 @@ var Browser = class _Browser {
     }
     if (!fs2.existsSync(exe)) throw new ToolError(`The configured browser does not exist: ${exe}`);
     let profile;
-    if (!options.profile || options.profile === "new") {
+    const temp = options.profile === "temp";
+    if (temp) {
+      sweepTempProfiles();
+      profile = newProfileDir(true);
+    } else if (!options.profile || options.profile === "new") {
       profile = newProfileDir();
     } else {
       profile = path2.resolve(options.profile);
@@ -36917,10 +36927,17 @@ var Browser = class _Browser {
       // other.
       ...headless ? ["--headless=new", "--mute-audio", "--enable-gpu", "--fingerprint-screen=auto", "--fingerprint-screen-position=auto"] : []
     ];
-    const { conn, pid } = await launchOutsideTree(exe, args);
+    let launched;
+    try {
+      launched = await launchOutsideTree(exe, args, temp ? profile : null);
+    } catch (e) {
+      if (temp) fs2.rmSync(profile, { recursive: true, force: true });
+      throw e;
+    }
+    const { conn, pid } = launched;
     const downloads = path2.join(profile, "Downloads");
     fs2.mkdirSync(downloads, { recursive: true });
-    const browser2 = new _Browser(conn, pid, profile, headless, downloads);
+    const browser2 = new _Browser(conn, pid, profile, temp, headless, downloads);
     try {
       const v = await conn.send("Browser.getVersion", {}, void 0, 2e4);
       browser2.version = String(v.product ?? "").replace(/^\D+\//, "");
@@ -37122,9 +37139,27 @@ function profileInUse(profile) {
     return true;
   }
 }
-async function launchOutsideTree(exe, args) {
+function sweepTempProfiles() {
+  let entries;
+  try {
+    entries = fs2.readdirSync(TEMP_PROFILES_DIR, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path2.join(TEMP_PROFILES_DIR, entry.name);
+    try {
+      if (Date.now() - fs2.statSync(dir).mtimeMs < 36e5 || profileInUse(dir)) continue;
+      fs2.rmSync(dir, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+async function launchOutsideTree(exe, args, tempProfile) {
   const launcher = path2.join(path2.dirname(fileURLToPath(import.meta.url)), "launcher.mjs");
-  const proc = spawn(process.execPath, [launcher, exe, ...args], {
+  const temp = tempProfile ? ["--temp", tempProfile] : [];
+  const proc = spawn(process.execPath, [launcher, ...temp, exe, ...args], {
     stdio: ["ignore", "pipe", "ignore", "pipe", "pipe"],
     detached: true,
     windowsHide: true
@@ -37866,7 +37901,7 @@ import { createHash } from "node:crypto";
 import fs5 from "node:fs";
 import path5 from "node:path";
 import { Readable } from "node:stream";
-var RELEASES = "https://api.github.com/repos/pppi21/Chromeleon-Browser/releases/latest";
+var RELEASES = "https://api.github.com/repos/nodriver-project/Chromeleon-Browser/releases/latest";
 var PORTABLE_ZIP = /^Chromeleon-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
 function pickZip(assets) {
   return assets.find((a) => PORTABLE_ZIP.test(a.name));
@@ -37976,7 +38011,7 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.1.1";
+var VERSION = "0.1.2";
 var INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
@@ -38032,7 +38067,9 @@ server.registerTool(
     description: "Launches the browser. Answers with the profile path and the fingerprint seed in use: pass them back on a later browser_open to return to the same cookies, logins and storage (profile) and the same fingerprint (seed). Headless runs without a window; headed (the default) lets the user watch.",
     inputSchema: {
       url: external_exports.string().optional().describe("A page to open in the first tab."),
-      profile: external_exports.string().optional().describe('"new" (the default) for a fresh profile, or the path of one a previous browser_open returned.'),
+      profile: external_exports.string().optional().describe(
+        '"new" (the default) for a fresh profile kept on disk; "temp" for a fresh one deleted when the browser closes, with its downloads and saved fetches; or the path of one a previous browser_open returned.'
+      ),
       seed: external_exports.number().int().min(-2147483648).max(2147483647).optional().describe("Fingerprint seed: the same seed gives the same fingerprint. Omit for a random one."),
       headless: external_exports.boolean().optional().describe("Run without a window (default false).")
     }
@@ -38045,7 +38082,7 @@ server.registerTool(
     const tab = await browser.newTab();
     const lines = [
       `Browser open: Chromeleon ${browser.version}, ${browser.headless ? "headless" : "with a window"}.`,
-      `Profile: ${browser.profile}`,
+      browser.temp ? `Profile: temporary, deleted when the browser closes (${browser.profile})` : `Profile: ${browser.profile}`,
       `Fingerprint seed: ${browser.seed ?? "unknown"}${browser.bundleActive === false ? " (the font bundle is not active: system fonts)" : ""}`,
       `Tab ${tab.id} is open.`
     ];
@@ -38055,11 +38092,18 @@ server.registerTool(
 );
 server.registerTool(
   "browser_close",
-  { title: "Close the browser", description: "Closes the browser cleanly. The profile keeps its state.", inputSchema: {} },
+  {
+    title: "Close the browser",
+    description: "Closes the browser cleanly. The profile keeps its state, unless it is temporary: then it is deleted.",
+    inputSchema: {}
+  },
   () => guard(async () => {
     if (!browser || browser.closed) return "No browser is open.";
     await browser.close();
-    return `Closed. Profile kept at ${browser.profile}`;
+    if (!browser.temp) return `Closed. Profile kept at ${browser.profile}`;
+    const deadline = Date.now() + 1e4;
+    while (fs6.existsSync(browser.profile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+    return fs6.existsSync(browser.profile) ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).` : "Closed. The temporary profile is deleted.";
   })
 );
 server.registerTool(

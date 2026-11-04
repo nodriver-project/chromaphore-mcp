@@ -9,7 +9,7 @@ import { Readable } from 'node:stream';
 import { ToolError } from './browser.js';
 import { BROWSERS_DIR, CURRENT_FILE, DATA_ROOT, installedBrowser } from './paths.js';
 
-const RELEASES = 'https://api.github.com/repos/pppi21/Chromeleon-Browser/releases/latest';
+const RELEASES = 'https://api.github.com/repos/nodriver-project/Chromeleon-Browser/releases/latest';
 
 export type Progress = (done: number, total: number, message: string) => void;
 

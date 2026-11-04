@@ -46,3 +46,5 @@ Seen on the way, and not signals: a page's first script sees a 0x0 outer window,
 ## Profiles
 
 A new profile is a folder under `%LOCALAPPDATA%\Chromeleon\profiles\`, not in Claude Code's plugin data folder, which is deleted with the plugin; profiles hold logins. A profile in use by another running browser is refused (its `lockfile` cannot be removed).
+
+A temporary profile (`profile: "temp"`) is a folder under `%LOCALAPPDATA%\Chromeleon\temp\`. The server cannot delete it itself: the profile is locked until the browser exits, and the browser outlives the server at the end of a session. So the launcher starts a second detached copy of itself, outside the server's tree like the browser, that waits for the browser's process to exit, however it ends (`browser_close`, the session ending, the user closing the window, a crash), then deletes the folder, retrying for a minute while the browser's helper processes let go of their files. It deletes nothing outside that folder. A temporary profile left behind when the machine went down with the browser open is deleted by the next `"temp"` launch, once it has been untouched for an hour and is not in use.

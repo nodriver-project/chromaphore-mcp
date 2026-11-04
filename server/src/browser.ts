@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CdpError, Connection, type CdpEvent } from './cdp.js';
-import { browserExe, newProfileDir } from './paths.js';
+import { browserExe, newProfileDir, TEMP_PROFILES_DIR } from './paths.js';
 
 export class ToolError extends Error {}
 
@@ -122,6 +122,7 @@ export class Browser {
     readonly conn: Connection,
     readonly pid: number,
     readonly profile: string,
+    readonly temp: boolean,
     readonly headless: boolean,
     readonly downloads: string,
   ) {
@@ -139,7 +140,11 @@ export class Browser {
     if (!fs.existsSync(exe)) throw new ToolError(`The configured browser does not exist: ${exe}`);
 
     let profile: string;
-    if (!options.profile || options.profile === 'new') {
+    const temp = options.profile === 'temp';
+    if (temp) {
+      sweepTempProfiles();
+      profile = newProfileDir(true);
+    } else if (!options.profile || options.profile === 'new') {
       profile = newProfileDir();
     } else {
       profile = path.resolve(options.profile);
@@ -163,10 +168,17 @@ export class Browser {
         ? ['--headless=new', '--mute-audio', '--enable-gpu', '--fingerprint-screen=auto', '--fingerprint-screen-position=auto']
         : []),
     ];
-    const { conn, pid } = await launchOutsideTree(exe, args);
+    let launched: { conn: Connection; pid: number };
+    try {
+      launched = await launchOutsideTree(exe, args, temp ? profile : null);
+    } catch (e) {
+      if (temp) fs.rmSync(profile, { recursive: true, force: true });
+      throw e;
+    }
+    const { conn, pid } = launched;
     const downloads = path.join(profile, 'Downloads');
     fs.mkdirSync(downloads, { recursive: true });
-    const browser = new Browser(conn, pid, profile, headless, downloads);
+    const browser = new Browser(conn, pid, profile, temp, headless, downloads);
     try {
       const v = await conn.send('Browser.getVersion', {}, undefined, 20_000);
       browser.version = String(v.product ?? '').replace(/^\D+\//, '');
@@ -390,11 +402,39 @@ function profileInUse(profile: string): boolean {
   }
 }
 
+// Temporary profiles whose reaper never ran (the machine went down with the
+// browser open): any not in use and untouched for an hour. The hour leaves
+// alone a folder another server has just made and not yet launched on.
+function sweepTempProfiles(): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(TEMP_PROFILES_DIR, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(TEMP_PROFILES_DIR, entry.name);
+    try {
+      if (Date.now() - fs.statSync(dir).mtimeMs < 3_600_000 || profileInUse(dir)) continue;
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // In use after all, or half deleted: the next sweep tries again.
+    }
+  }
+}
+
 // Starts the browser through launcher.mjs so it is outside this process's
-// tree (docs/DESIGN.md, "Talking to the browser").
-async function launchOutsideTree(exe: string, args: string[]): Promise<{ conn: Connection; pid: number }> {
+// tree (docs/DESIGN.md, "Talking to the browser"). For a temporary profile
+// the launcher also leaves a process that deletes it once the browser exits.
+async function launchOutsideTree(
+  exe: string,
+  args: string[],
+  tempProfile: string | null,
+): Promise<{ conn: Connection; pid: number }> {
   const launcher = path.join(path.dirname(fileURLToPath(import.meta.url)), 'launcher.mjs');
-  const proc = spawn(process.execPath, [launcher, exe, ...args], {
+  const temp = tempProfile ? ['--temp', tempProfile] : [];
+  const proc = spawn(process.execPath, [launcher, ...temp, exe, ...args], {
     stdio: ['ignore', 'pipe', 'ignore', 'pipe', 'pipe'],
     detached: true,
     windowsHide: true,

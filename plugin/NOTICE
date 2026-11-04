@@ -3,7 +3,7 @@ Copyright 2026 The Chromeleon authors
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-"Chromeleon" names the browser at https://github.com/pppi21/Chromeleon-Browser;
+"Chromeleon" names the browser at https://github.com/nodriver-project/Chromeleon-Browser;
 the license grants no right to use the name (section 6).
 
 plugin/dist/server.mjs bundles third-party npm packages under their own

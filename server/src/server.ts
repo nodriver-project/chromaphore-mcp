@@ -1,5 +1,6 @@
 // The MCP server Claude Code starts: browser tools over the Chromeleon
 // browser's custom CDP commands. Design notes: docs/DESIGN.md.
+import fs from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -9,7 +10,7 @@ import * as whole from './browser_tools.js';
 import { CdpError } from './cdp.js';
 import { checkInstall, install } from './install.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 const INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
@@ -87,7 +88,9 @@ server.registerTool(
       profile: z
         .string()
         .optional()
-        .describe('"new" (the default) for a fresh profile, or the path of one a previous browser_open returned.'),
+        .describe(
+          '"new" (the default) for a fresh profile kept on disk; "temp" for a fresh one deleted when the browser closes, with its downloads and saved fetches; or the path of one a previous browser_open returned.',
+        ),
       seed: z
         .number()
         .int()
@@ -107,7 +110,9 @@ server.registerTool(
       const tab = await browser.newTab();
       const lines = [
         `Browser open: Chromeleon ${browser.version}, ${browser.headless ? 'headless' : 'with a window'}.`,
-        `Profile: ${browser.profile}`,
+        browser.temp
+          ? `Profile: temporary, deleted when the browser closes (${browser.profile})`
+          : `Profile: ${browser.profile}`,
         `Fingerprint seed: ${browser.seed ?? 'unknown'}${browser.bundleActive === false ? ' (the font bundle is not active: system fonts)' : ''}`,
         `Tab ${tab.id} is open.`,
       ];
@@ -118,12 +123,22 @@ server.registerTool(
 
 server.registerTool(
   'browser_close',
-  { title: 'Close the browser', description: 'Closes the browser cleanly. The profile keeps its state.', inputSchema: {} },
+  {
+    title: 'Close the browser',
+    description: 'Closes the browser cleanly. The profile keeps its state, unless it is temporary: then it is deleted.',
+    inputSchema: {},
+  },
   () =>
     guard(async () => {
       if (!browser || browser.closed) return 'No browser is open.';
       await browser.close();
-      return `Closed. Profile kept at ${browser.profile}`;
+      if (!browser.temp) return `Closed. Profile kept at ${browser.profile}`;
+      // The launcher's reaper deletes it once the browser has exited.
+      const deadline = Date.now() + 10_000;
+      while (fs.existsSync(browser.profile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+      return fs.existsSync(browser.profile)
+        ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).`
+        : 'Closed. The temporary profile is deleted.';
     }),
 );
 

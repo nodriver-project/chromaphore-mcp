@@ -12,7 +12,7 @@ The browser tools act like a person at a real browser: the pointer travels to wh
 1. `browser_open` with the `url` to start on. Pick `headless: true` for background checks the user does not need to watch; leave it off when they want to see the browser, or when a site behaves differently without a window.
 2. Act with `click`, `type`, `press`, `scroll`, `hover`, `navigate`. Each waits until the page has settled and answers with what changed: `+` lines appeared, `-` lines went, `~` lines changed (a value, a name, a state), plus focus, URL, scroll and announcements. That is usually all you need to plan the next step.
 3. Call `observe` when you need the whole page again (after several changes, or a page you have not listed yet). Call `view` with a `snapshot_id` only when text is not enough: layout, images, colours, a canvas. It costs about 1,500 tokens.
-4. `browser_close` when done. The profile stays on disk.
+4. `browser_close` when done. The profile stays on disk, unless it was `temp`.
 
 Send calls whose targets you already know one after another without observing in between: a stale id is refused with the reason rather than acting on the wrong element.
 
@@ -44,5 +44,7 @@ Elements outside the view can be clicked directly: the click scrolls them in fir
 ## Profiles and fingerprints
 
 `browser_open` answers with the profile path and the fingerprint seed. Pass `profile` back to reuse cookies and logins (for testing a signed-in flow, sign in once, then reuse the profile); pass `seed` back to keep the same fingerprint, which sites expect from a returning visitor. A fresh profile with a random seed is a first-time visitor.
+
+For a one-off check you will not come back to, pass `profile: "temp"`: a fresh profile deleted when the browser closes, so test runs do not pile up profile folders. Its downloads and the files `fetch` saves go with it: copy out what you need before `browser_close`.
 
 A profile can be open in one browser at a time.

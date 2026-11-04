@@ -3,7 +3,7 @@
 
 **Support:**  [Discussions](https://github.com/nodriver-project/chromeleon-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromeleon-Browser/releases)
 
-A Claude Code plugin that drives the [Chromeleon browser](https://github.com/pppi21/Chromeleon-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
+A Claude Code plugin that drives the [Chromeleon browser](https://github.com/nodriver-project/Chromeleon-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
 
 What Claude gets:
 
@@ -16,7 +16,7 @@ Windows only for now, like the browser.
 ## Install
 
 ```
-/plugin install chromeleon --marketplace pppi21/chromeleon-mcp
+/plugin install chromeleon --marketplace nodriver-project/chromeleon-mcp
 /chromeleon:install
 ```
 
@@ -35,7 +35,7 @@ Claude Code asks before every tool call of a new plugin. To let the browser tool
 | Tool | What it does |
 |---|---|
 | `browser_install` | Downloads and unpacks the latest release, checked against its published SHA-256, replacing an older one; `check_only` reports what is installed and what the latest release is, and downloads nothing |
-| `browser_open` / `browser_close` | Launches with a new or existing profile, a fixed or random fingerprint seed, with or without a window |
+| `browser_open` / `browser_close` | Launches with a new, temporary or existing profile, a fixed or random fingerprint seed, with or without a window |
 | `tab_list` / `tab_new` / `tab_select` / `tab_close` | Tabs, including those the page opens |
 | `navigate` | A URL, back, forward or reload; answers with the settled page's listing |
 | `observe` / `view` | The listing, and its screenshot with each element outlined and labelled |
@@ -56,6 +56,7 @@ Requires Chromeleon 156 or later.
 
 - `%LOCALAPPDATA%\Chromeleon\browser\<release>\`: the browser.
 - `%LOCALAPPDATA%\Chromeleon\profiles\`: profiles the tools created. Each holds that profile's cookies and logins; delete a folder to forget it.
+- `%LOCALAPPDATA%\Chromeleon\temp\`: temporary profiles while their browser runs; each is deleted when its browser exits.
 
 The browser is started outside Claude Code's process tree and closes itself cleanly when the session ends.
 
@@ -64,7 +65,7 @@ The browser is started outside Claude Code's process tree and closes itself clea
 - `.claude-plugin/marketplace.json`: the repository is its own marketplace.
 - `plugin/`: what Claude Code installs: the manifest, the MCP server config, the bundled server (`dist/`), the skills.
 - `server/`: the server's TypeScript source; `npm install`, then `node build.mjs` bundles it into `plugin/dist/` and writes `plugin/THIRD_PARTY_NOTICES.md`, `plugin/LICENSE` and `plugin/NOTICE`.
-  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards; `install.mjs` runs `browser_install`.
+  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `install.mjs` runs `browser_install`.
   - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `CHROMELEON_BROWSER` or the installed release.
 - `docs/DESIGN.md`: why the server works the way it does: the pipe, the launch outside the process tree, every launch switch, the automation-signal results, how actions settle.
 
