@@ -1,6 +1,7 @@
 // Turns Page.captureAgentSnapshot's answer into the text the model reads: one
-// line per element, with the id it acts by (the element's label, "a12"), and
-// after an action only what changed.
+// line per element, with the id it acts by, and after an action only what
+// changed. An id is the element's label (a12) with the page's letters in place
+// of the a (b12 on the second page shown; browser.ts, Browser.lettersFor).
 
 // The states every visible, usable control has; the line names the rest.
 const QUIET_STATES = new Set(['visible', 'enabled', 'focusable', 'editable']);
@@ -11,6 +12,13 @@ export function clip(s: string | undefined, max = MAX_TEXT): string {
   if (!s) return '';
   const one = s.replace(/\s+/g, ' ').trim();
   return one.length > max ? one.slice(0, max - 1) + '…' : one;
+}
+
+// The id the model acts by, for the browser's label of an element on the page
+// with these letters; null for an element without a label.
+export function idOf(label: string | undefined, letters: string): string | null {
+  const m = label ? /^a(\d+)$/.exec(label) : null;
+  return m ? `${letters}${m[1]}` : null;
 }
 
 function roleWord(e: any): string {
@@ -28,8 +36,9 @@ function place(e: any, vp: any): string {
   return 'right of the view';
 }
 
-export function elementLine(e: any, vp: any, layers?: any[]): string {
-  const parts = [e.label ?? `#${e.agentNodeId}`, roleWord(e)];
+export function elementLine(e: any, vp: any, letters: string, layers?: any[]): string {
+  const id = idOf(e.label, letters);
+  const parts = id ? [id, roleWord(e)] : [roleWord(e)];
   const name = clip(e.name);
   if (name) parts.push(JSON.stringify(name));
   else if (!e.interactive && e.reads) parts.push(JSON.stringify(clip(e.reads)));
@@ -90,7 +99,7 @@ function redundantLabels(elements: any[]): Set<number> {
   );
 }
 
-export function formatListing(snap: any, tabId: string): string {
+export function formatListing(snap: any, tabId: string, letters: string): string {
   const lines = header(snap, tabId);
   lines.push('');
   let size = lines.join('\n').length;
@@ -98,7 +107,7 @@ export function formatListing(snap: any, tabId: string): string {
   const listed = snap.elements.filter((e: any) => !skip.has(e.agentNodeId));
   let shown = 0;
   for (const e of listed) {
-    const line = elementLine(e, snap.viewport, snap.layers);
+    const line = elementLine(e, snap.viewport, letters, snap.layers);
     if (size + line.length > MAX_LISTING_CHARS) break;
     lines.push(line);
     size += line.length + 1;
@@ -114,9 +123,10 @@ export function formatListing(snap: any, tabId: string): string {
 
 // What changed since the listing named by `since`, or the full listing when
 // the delta does not apply (a new document, or the baseline was too old).
-export function formatChange(snap: any, tabId: string): string {
+export function formatChange(snap: any, tabId: string, letters: string): string {
   const d = snap.delta;
-  if (!d || snap.baseline === false) return formatListing(snap, tabId);
+  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters);
+  const id = (label: string | undefined) => idOf(label, letters) ?? '(no id)';
   const byId = new Map<number, any>(snap.elements.map((e: any) => [e.agentNodeId, e]));
   const skip = redundantLabels(snap.elements);
   const lines: string[] = [];
@@ -130,7 +140,7 @@ export function formatChange(snap: any, tabId: string): string {
   for (const a of d.added ?? []) {
     const e = byId.get(a.agentNodeId);
     if (e && !skip.has(e.agentNodeId)) {
-      lines.push(`+ ${elementLine(e, snap.viewport, snap.layers)}${a.why === 'new' ? '' : ` (${a.why.replace(/_/g, ' ')})`}`);
+      lines.push(`+ ${elementLine(e, snap.viewport, letters, snap.layers)}${a.why === 'new' ? '' : ` (${a.why.replace(/_/g, ' ')})`}`);
     }
   }
   // What only scrolled out of view is said in one line; what left the page
@@ -138,14 +148,14 @@ export function formatChange(snap: any, tabId: string): string {
   const removed = (d.removed ?? []).filter((r: any) => !(r.role === 'LabelText' && skip.size));
   const outOfView = removed.filter((r: any) => r.why === 'out_of_view');
   for (const r of outOfView.length > 5 ? removed.filter((r: any) => r.why !== 'out_of_view') : removed) {
-    lines.push(`- ${r.label} ${roleWord(r)}${r.name ? ` ${JSON.stringify(clip(r.name))}` : ''} (${r.why.replace(/_/g, ' ')})`);
+    lines.push(`- ${id(r.label)} ${roleWord(r)}${r.name ? ` ${JSON.stringify(clip(r.name))}` : ''} (${r.why.replace(/_/g, ' ')})`);
   }
   if (outOfView.length > 5) {
-    lines.push(`- ${outOfView.length} elements went out of view (${outOfView[0].label} … ${outOfView.at(-1).label})`);
+    lines.push(`- ${outOfView.length} elements went out of view (${id(outOfView[0].label)} … ${id(outOfView.at(-1).label)})`);
   }
   for (const c of d.changed ?? []) {
     const e = byId.get(c.agentNodeId);
-    const who = e ? `${e.label} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ''}` : `#${c.agentNodeId}`;
+    const who = e ? `${id(e.label)} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ''}` : 'an element not listed';
     if (c.what === 'state') {
       const from = new Set<string>(c.fromStates ?? []);
       const to = new Set<string>(c.toStates ?? []);
@@ -159,10 +169,10 @@ export function formatChange(snap: any, tabId: string): string {
   }
   const reordered = (d.reordered ?? []).map((n: number) => byId.get(n)).filter(Boolean);
   if (reordered.length) {
-    const named = reordered.slice(0, 10).map((e: any) => `${e.label}${e.name ? ` ${JSON.stringify(clip(e.name, 40))}` : ''}`);
+    const named = reordered.slice(0, 10).map((e: any) => `${id(e.label)}${e.name ? ` ${JSON.stringify(clip(e.name, 40))}` : ''}`);
     lines.push(`Order changed: ${named.join(', ')}${reordered.length > 10 ? ` and ${reordered.length - 10} more` : ''}`);
   }
-  if (d.focus) lines.push(d.focus.label ? `Focus on ${d.focus.label}` : 'Focus left the listed elements');
+  if (d.focus) lines.push(d.focus.label ? `Focus on ${id(d.focus.label)}` : 'Focus left the listed elements');
   if (d.scroll) lines.push(`Scrolled to ${d.scroll.x},${d.scroll.y}`);
   lines.push(...heardLines(snap));
   if (d.partial) lines.push('A frame did not answer; its elements are as before.');
@@ -170,10 +180,30 @@ export function formatChange(snap: any, tabId: string): string {
   return lines.join('\n');
 }
 
+// The report names a listed element by the browser's label and its name
+// (a12 "Save" (gone), transition opacity on a12 "Save", ... (a12 "Save")),
+// from the latest listing of whichever document the settle ran in, which
+// after a back/forward restore is not the page the tab's letters name. The
+// label is left out and the name kept; the line is said, not acted on. Only
+// where the browser puts the label (settle_join.cc, Relabel): at the start of
+// a mutation, right after an animation's first " on ", or as "(a12 ...)" at
+// the end of an animation without one.
+function unlabelled(c: any): string {
+  const what: string = c.what ?? '';
+  // a12 "Save" ... -> "Save" ...; a12 (changed) -> a listed element (changed)
+  const drop = (s: string) => s.replace(/^a\d+ "/, '"').replace(/^a\d+(?= \(|\)|$)/, 'a listed element');
+  if (c.kind === 'mutation') return drop(what);
+  if (c.kind !== 'animation') return what;
+  const on = what.indexOf(' on ');
+  if (on >= 0) return what.slice(0, on + 4) + drop(what.slice(on + 4));
+  const end = what.lastIndexOf(' (a');
+  return end >= 0 && /^ \(a\d+( "|\)$)/.test(what.slice(end)) ? what.slice(0, end + 2) + drop(what.slice(end + 2)) : what;
+}
+
 export function settleLine(report: any): string {
   const s = report?.settle;
   if (!s) return '';
   if (s.settled) return '';
-  const what = (s.stillChanging ?? []).map((c: any) => `${c.kind} ${clip(c.what, 80)}`).join('; ');
+  const what = (s.stillChanging ?? []).map((c: any) => `${c.kind} ${clip(unlabelled(c), 80)}`).join('; ');
   return `The page had not settled after ${Math.round(s.afterMs)} ms${what ? `: still changing ${what}` : ''}.`;
 }

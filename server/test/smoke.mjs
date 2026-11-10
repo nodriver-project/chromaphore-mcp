@@ -58,7 +58,7 @@ async function call(name, args = {}, { show = 1200 } = {}) {
   console.log(text.length > show ? `${text.slice(0, show)}\n…(${text.length - show} more)` : text);
   console.log();
   // Remember ids by name for the next calls.
-  for (const m of text.matchAll(/^[+ ]*(a\d+) (\w+) "([^"]*)"/gm)) ids[`${m[2]}:${m[3]}`] = m[1];
+  for (const m of text.matchAll(/^[+ ]*([a-z]+\d+) (\w+) "([^"]*)"/gm)) ids[`${m[2]}:${m[3]}`] = m[1];
   const snap = /snapshot_id (s\d+)/.exec(text);
   if (snap) ids.snapshot = snap[1];
   return { text, isError: r.isError };

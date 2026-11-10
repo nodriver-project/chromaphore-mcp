@@ -5,24 +5,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
 import { CdpError } from './cdp.js';
-import { ToolError, describeEvent, onActivePage, type Tab } from './browser.js';
+import { ToolError, describeEvent, onActivePage, pageOf, type Tab } from './browser.js';
 import { formatChange, formatListing, settleLine } from './listing.js';
 
 // Screenshots kept for `view`, newest last.
-const images = new Map<string, { data: string; mimeType: string }>();
+const images = new Map<string, { data: string; mimeType: string; letters: string }>();
 let snapshotCounter = 0;
 const KEEP_IMAGES = 8;
 
-export function image(snapshotId: string): { data: string; mimeType: string } {
+export function image(snapshotId: string): { data: string; mimeType: string; letters: string } {
   const img = images.get(snapshotId);
   if (!img) throw new ToolError(`No snapshot ${snapshotId} (only the last ${KEEP_IMAGES} are kept). Call observe again.`);
   return img;
 }
 
-function keepImage(base64: string | undefined): string | null {
+function keepImage(base64: string | undefined, letters: string): string | null {
   if (!base64) return null;
   const id = `s${++snapshotCounter}`;
-  images.set(id, { data: base64, mimeType: 'image/jpeg' });
+  images.set(id, { data: base64, mimeType: 'image/jpeg', letters });
   while (images.size > KEEP_IMAGES) images.delete(images.keys().next().value!);
   return id;
 }
@@ -53,8 +53,9 @@ async function capture(tab: Tab, params: object): Promise<any> {
 
 function remember(tab: Tab, snap: any): string | null {
   tab.lastListingId = snap.listingId;
+  tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
   tab.viewport = { width: snap.viewport.width, height: snap.viewport.height };
-  return keepImage(snap.screenshot);
+  return keepImage(snap.screenshot, tab.letters);
 }
 
 function noticesOf(tab: Tab): string[] {
@@ -84,7 +85,7 @@ async function afterAction(tab: Tab, said: string[], outcome?: any): Promise<str
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), '', formatChange(r.snap, tab.id));
+  lines.push(...noticesOf(tab), '', formatChange(r.snap, tab.id, tab.letters));
   return withSnapshotId(lines.join('\n'), id);
 }
 
@@ -93,7 +94,7 @@ export async function observe(tab: Tab, offscreen?: string, scope?: string): Pro
   await settle(tab);
   const snap = await capture(tab, { offscreenMode: offscreen ?? 'summary', scope: scope ?? 'on' });
   const id = remember(tab, snap);
-  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id)].join('\n'), id);
+  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters)].join('\n'), id);
 }
 
 // --- the pointer --------------------------------------------------------
@@ -125,12 +126,12 @@ async function withPointer<T>(tab: Tab, call: (p: { pointerX: number; pointerY: 
 
 // --- elements -----------------------------------------------------------
 
-function agentNodeId(id: string): number {
-  const m = /^a?(\d+)$/.exec(id.trim());
-  if (!m) throw new ToolError(`"${id}" is not an element id; ids look like a12 and come from observe.`);
-  return Number(m[1]);
-}
-
+// An id (b12) is the browser's label for the element (a12) with the letters
+// of the page that listed it in place of the a. Labels start again at a1 in
+// every document, so the letters keep an id from an earlier page, or from
+// another tab, from naming whatever has that label now: such an id is refused.
+// The label then gives the element's agentNodeId (Page.agentNodesAlive),
+// which Page.resolveAgentNode takes.
 interface Target {
   backendNodeId: number;
   frameId: string;
@@ -138,7 +139,34 @@ interface Target {
 }
 
 async function resolve(tab: Tab, id: string): Promise<Target> {
-  const node = await onActivePage(() => tab.send('Page.resolveAgentNode', { agentNodeId: agentNodeId(id) }));
+  const m = /^([a-z]+)(\d+)$/i.exec(id.trim());
+  if (!m) throw new ToolError(`"${id}" is not an element id; ids look like a12 and come from the listings.`);
+  const page = pageOf(m[1].toLowerCase());
+  if (!page) throw new ToolError(`${id} is not an id any listing gave. Call observe for current ids.`);
+  if (page.browser !== tab.browser.serial) {
+    throw new ToolError(`${id} is from a browser closed since. Call observe for current ids.`);
+  }
+  if (page.targetId !== tab.targetId) {
+    throw new ToolError(
+      tab.browser.hasTarget(page.targetId)
+        ? `${id} is an element of tab ${tab.browser.tabIdFor(page.targetId)}, not of the selected tab ${tab.id}: tab_select it first, or use an id from this tab's listing.`
+        : `${id} is from a tab closed since. Call observe for current ids.`,
+    );
+  }
+  const life = await onActivePage(() => tab.send('Page.agentNodesAlive', { labels: [`a${m[2]}`] }));
+  if (life.documentId !== page.documentId) {
+    throw new ToolError(
+      `${id} is from a page this tab has since left (a navigation or a reload replaced it). Use the ids of the latest listing, or call observe.`,
+    );
+  }
+  const node0 = life.nodes?.[0];
+  if (node0?.state === 'elsewhere') {
+    throw new ToolError(`${id} is not an element of this page. Call observe for current ids.`);
+  }
+  const node =
+    node0?.agentNodeId === undefined || node0.state === 'gone'
+      ? { found: false }
+      : await onActivePage(() => tab.send('Page.resolveAgentNode', { agentNodeId: node0.agentNodeId }));
   if (!node.found) throw new ToolError(`${id} is no longer on the page or not laid out. Call observe for current ids.`);
   return { backendNodeId: node.backendNodeId, frameId: node.localRootFrameId, label: id };
 }
@@ -412,7 +440,7 @@ export async function navigate(tab: Tab, opts: { url?: string; action?: string }
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), '', formatListing(r.snap, tab.id));
+  lines.push(...noticesOf(tab), '', formatListing(r.snap, tab.id, tab.letters));
   return withSnapshotId(lines.join('\n'), id);
 }
 

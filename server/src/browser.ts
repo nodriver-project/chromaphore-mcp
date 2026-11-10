@@ -70,6 +70,8 @@ export class Tab {
   pointer: { x: number; y: number } | null = null;
   viewport: { width: number; height: number } | null = null;
   lastListingId: string | null = null;
+  // The letters of the page the tab's last listing showed (Browser.lettersFor).
+  letters = 'a';
   dialog: Dialog | null = null;
   notices: string[] = [];
   closed = false;
@@ -114,6 +116,8 @@ export class Tab {
 }
 
 export class Browser {
+  // Names this browser in the page registry (pageOf) without keeping it alive.
+  readonly serial = ++browsersOpened;
   readonly tabs = new Map<string, Tab>(); // by targetId
   private readonly tabIds = new Map<string, string>(); // targetId -> t1, t2, ...
   private readonly targets = new Map<string, { url: string; title: string; type: string }>();
@@ -171,10 +175,12 @@ export class Browser {
       `--fingerprint-seed=${options.seed ?? 'auto'}`,
       // Headless takes its screen and window place from the seed's profile;
       // headed shows the real monitor and window, which must agree with each
-      // other.
+      // other. Headed also shows the pointer the tools move: the browser draws
+      // it on a layer of its own over the page, which the page never sees
+      // (docs/DESIGN.md, "Launch switches").
       ...(headless
         ? ['--headless=new', '--mute-audio', '--enable-gpu', '--fingerprint-screen=auto', '--fingerprint-screen-position=auto']
-        : []),
+        : ['--show-cdp-cursor']),
     ];
     let launched: { conn: Connection; pid: number };
     try {
@@ -277,6 +283,23 @@ export class Browser {
     return n;
   }
 
+  lettersFor(targetId: string, documentId: string): string {
+    let letters = lettersByPage.get(this)?.get(`${targetId}/${documentId}`);
+    if (!letters) {
+      do letters = toLetters(pagesCounted++);
+      while (letters === 's' || letters === 't');
+      if (!lettersByPage.has(this)) lettersByPage.set(this, new Map());
+      lettersByPage.get(this)!.set(`${targetId}/${documentId}`, letters);
+      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId });
+    }
+    return letters;
+  }
+
+  // Whether the browser still has this target (a tab not closed since).
+  hasTarget(targetId: string): boolean {
+    return this.targets.has(targetId);
+  }
+
   assertOpen(): void {
     if (this.closed) throw new ToolError('The browser has closed. Call browser_open.');
   }
@@ -361,6 +384,29 @@ export class Browser {
         return;
     }
   }
+}
+
+// Each page a listing shows (a tab's document) gets letters of its own for
+// the ids it lists: a12 on the first, b12 on the next, and so on. The
+// browser's labels start again at a1 in every document, so an id without its
+// page would name another element once the tab moved on (actions.ts,
+// resolve). The count is the server's, not one browser's, so an id from a
+// browser closed since never names a page of the next one; s and t are
+// skipped, being the letters of snapshot and tab ids.
+const lettersByPage = new WeakMap<Browser, Map<string, string>>();
+const pagesByLetters = new Map<string, { browser: number; targetId: string; documentId: string }>();
+let pagesCounted = 0;
+let browsersOpened = 0;
+
+export function pageOf(letters: string): { browser: number; targetId: string; documentId: string } | null {
+  return pagesByLetters.get(letters) ?? null;
+}
+
+// 0 -> a, 25 -> z, 26 -> aa, 27 -> ab, ...
+function toLetters(n: number): string {
+  let s = '';
+  for (let k = n + 1; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(97 + ((k - 1) % 26)) + s;
+  return s;
 }
 
 export function describeEvent(ev: any): string {

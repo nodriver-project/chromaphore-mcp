@@ -67,7 +67,7 @@ async function call(name, args = {}, show = 900) {
   const text = r.content.map((c) => (c.type === 'text' ? c.text : `[${c.type}]`)).join('\n');
   console.log(`== ${name} ${JSON.stringify(args)} ${r.isError ? 'ERROR ' : ''}(${Date.now() - t0} ms)`);
   console.log(text.length > show ? `${text.slice(0, show)}\n…(${text.length - show} more)` : text, '\n');
-  for (const m of text.matchAll(/^[+ ]*(a\d+) ([\w-]+(?: input)?) "([^"]*)"/gm)) {
+  for (const m of text.matchAll(/^[+ ]*([a-z]+\d+) ([\w-]+(?: input)?) "([^"]*)"/gm)) {
     if (m[2] !== 'label') ids[m[3]] ??= m[1];
   }
   return text;

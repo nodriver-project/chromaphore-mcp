@@ -11,13 +11,13 @@ import { CdpError } from './cdp.js';
 import { checkInstall, install } from './install.js';
 import { moveFromChromeleon, removePendingReleases } from './paths.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 
 const INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
 
-Elements are named by ids like a12 from the listings. An id stays valid while its element is on the page, across scrolls and later listings; a stale one is refused with the reason. Clicks move a real pointer along a curved path and scroll the element into view first; typing is human-paced, so long texts take seconds.
+Elements are named by ids like a12 from the listings. Each page gets its own letters (a12 on one page, b12 on the next after a navigation, a reload or in another tab); a page restored by going back keeps its letters. An id stays valid while its element is on its page, across scrolls and later listings; one from a page the tab has left, or a gone element, is refused with the reason, never used on another element. Clicks move a real pointer along a curved path and scroll the element into view first; typing is human-paced, so long texts take seconds.
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
 
@@ -239,7 +239,15 @@ server.registerTool(
   (args) =>
     guard(async () => {
       const img = act.image(args.snapshot_id);
-      return { content: [{ type: 'image', data: img.data, mimeType: img.mimeType }] };
+      const content: Content[] = [{ type: 'image', data: img.data, mimeType: img.mimeType }];
+      // The browser draws its own labels, a1 on every page.
+      if (img.letters !== 'a') {
+        content.push({
+          type: 'text',
+          text: `The badges read a12 and so on; on this page the ids are ${img.letters}12 and so on (badge a5 is ${img.letters}5).`,
+        });
+      }
+      return { content };
     }),
 );
 

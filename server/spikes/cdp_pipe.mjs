@@ -36,7 +36,7 @@ export const BASE_SWITCHES = [
 export function headSwitches(headless) {
   return headless
     ? ['--headless=new', '--mute-audio', '--enable-gpu', '--fingerprint-screen=auto', '--fingerprint-screen-position=auto']
-    : [];
+    : ['--show-cdp-cursor'];
 }
 
 // A person's launch: the headless switch only when headless, nothing else.

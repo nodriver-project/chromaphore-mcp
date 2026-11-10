@@ -14,11 +14,13 @@ The browser tools act like a person at a real browser: the pointer travels to wh
 3. Call `observe` when you need the whole page again (after several changes, or a page you have not listed yet). Call `view` with a `snapshot_id` only when text is not enough: layout, images, colours, a canvas. It costs about 1,500 tokens.
 4. `browser_close` when done. The profile stays on disk, unless it was `temp`.
 
-Send calls whose targets you already know one after another without observing in between: a stale id is refused with the reason rather than acting on the wrong element.
+Send calls whose targets you already know one after another without observing in between: an id from a page the tab has since left, or of an element that went, is refused with the reason rather than acting on the wrong element.
 
 ## Ids and the listing
 
 Each line starts with an id like `a12`, then the role, the accessible name in quotes, the value, the states that matter (focused, checked, disabled, required, invalid with the page's message), a link's destination, and where it is when not in view. `[red]` is the colour of its outline on the `view` screenshot. An id stays valid for the element's whole life in the document, across scrolls and listings.
+
+Each page gets its own letters: `a12` on one page, `b12` on the next (after a navigation, a reload, or in another tab), and so on; read the ids off the latest listing. A page that reloads itself (a cookie banner often does) is a new page; one restored by going back keeps its letters, and its ids work again. The `view` screenshot's badges always read `a12`; on a later page `view` says which letters they stand for.
 
 Elements outside the view can be clicked directly: the click scrolls them in first. Elements marked covered cannot: close what covers them (a cookie banner, a dialog, a menu) first. `Open on top:` lines name dialogs, drawers and menus; with one open, only its contents are listed unless you observe with `scope: "all"`.
 

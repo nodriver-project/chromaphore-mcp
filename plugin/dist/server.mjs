@@ -36991,6 +36991,8 @@ var Tab = class {
   pointer = null;
   viewport = null;
   lastListingId = null;
+  // The letters of the page the tab's last listing showed (Browser.lettersFor).
+  letters = "a";
   dialog = null;
   notices = [];
   closed = false;
@@ -37040,6 +37042,8 @@ var Browser = class _Browser {
   temp;
   headless;
   downloads;
+  // Names this browser in the page registry (pageOf) without keeping it alive.
+  serial = ++browsersOpened;
   tabs = /* @__PURE__ */ new Map();
   // by targetId
   tabIds = /* @__PURE__ */ new Map();
@@ -37084,8 +37088,10 @@ var Browser = class _Browser {
       `--fingerprint-seed=${options.seed ?? "auto"}`,
       // Headless takes its screen and window place from the seed's profile;
       // headed shows the real monitor and window, which must agree with each
-      // other.
-      ...headless ? ["--headless=new", "--mute-audio", "--enable-gpu", "--fingerprint-screen=auto", "--fingerprint-screen-position=auto"] : []
+      // other. Headed also shows the pointer the tools move: the browser draws
+      // it on a layer of its own over the page, which the page never sees
+      // (docs/DESIGN.md, "Launch switches").
+      ...headless ? ["--headless=new", "--mute-audio", "--enable-gpu", "--fingerprint-screen=auto", "--fingerprint-screen-position=auto"] : ["--show-cdp-cursor"]
     ];
     let launched;
     try {
@@ -37178,6 +37184,22 @@ var Browser = class _Browser {
     this.notices = [];
     return n;
   }
+  lettersFor(targetId, documentId) {
+    let letters = lettersByPage.get(this)?.get(`${targetId}/${documentId}`);
+    if (!letters) {
+      do
+        letters = toLetters(pagesCounted++);
+      while (letters === "s" || letters === "t");
+      if (!lettersByPage.has(this)) lettersByPage.set(this, /* @__PURE__ */ new Map());
+      lettersByPage.get(this).set(`${targetId}/${documentId}`, letters);
+      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId });
+    }
+    return letters;
+  }
+  // Whether the browser still has this target (a tab not closed since).
+  hasTarget(targetId) {
+    return this.targets.has(targetId);
+  }
   assertOpen() {
     if (this.closed) throw new ToolError("The browser has closed. Call browser_open.");
   }
@@ -37259,6 +37281,18 @@ var Browser = class _Browser {
     }
   }
 };
+var lettersByPage = /* @__PURE__ */ new WeakMap();
+var pagesByLetters = /* @__PURE__ */ new Map();
+var pagesCounted = 0;
+var browsersOpened = 0;
+function pageOf(letters) {
+  return pagesByLetters.get(letters) ?? null;
+}
+function toLetters(n) {
+  let s = "";
+  for (let k = n + 1; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(97 + (k - 1) % 26) + s;
+  return s;
+}
 function describeEvent(ev) {
   switch (ev.kind) {
     case "navigation": {
@@ -37340,6 +37374,10 @@ function clip(s, max = MAX_TEXT) {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > max ? one.slice(0, max - 1) + "\u2026" : one;
 }
+function idOf(label, letters) {
+  const m = label ? /^a(\d+)$/.exec(label) : null;
+  return m ? `${letters}${m[1]}` : null;
+}
 function roleWord(e) {
   if (e.role === "LabelText") return "label";
   if (e.role === "StaticText" || e.role === "generic") return "text";
@@ -37352,8 +37390,9 @@ function place(e, vp) {
   if (e.x + e.width <= 0) return "left of the view";
   return "right of the view";
 }
-function elementLine(e, vp, layers) {
-  const parts = [e.label ?? `#${e.agentNodeId}`, roleWord(e)];
+function elementLine(e, vp, letters, layers) {
+  const id2 = idOf(e.label, letters);
+  const parts = id2 ? [id2, roleWord(e)] : [roleWord(e)];
   const name = clip(e.name);
   if (name) parts.push(JSON.stringify(name));
   else if (!e.interactive && e.reads) parts.push(JSON.stringify(clip(e.reads)));
@@ -37402,7 +37441,7 @@ function redundantLabels(elements) {
     elements.filter((e) => e.role === "LabelText" && !e.interactive && names.has(clip(e.name ?? e.reads))).map((e) => e.agentNodeId)
   );
 }
-function formatListing(snap, tabId) {
+function formatListing(snap, tabId, letters) {
   const lines = header(snap, tabId);
   lines.push("");
   let size = lines.join("\n").length;
@@ -37410,7 +37449,7 @@ function formatListing(snap, tabId) {
   const listed = snap.elements.filter((e) => !skip.has(e.agentNodeId));
   let shown = 0;
   for (const e of listed) {
-    const line = elementLine(e, snap.viewport, snap.layers);
+    const line = elementLine(e, snap.viewport, letters, snap.layers);
     if (size + line.length > MAX_LISTING_CHARS) break;
     lines.push(line);
     size += line.length + 1;
@@ -37423,9 +37462,10 @@ function formatListing(snap, tabId) {
   lines.push(...heardLines(snap));
   return lines.join("\n");
 }
-function formatChange(snap, tabId) {
+function formatChange(snap, tabId, letters) {
   const d = snap.delta;
-  if (!d || snap.baseline === false) return formatListing(snap, tabId);
+  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters);
+  const id2 = (label) => idOf(label, letters) ?? "(no id)";
   const byId = new Map(snap.elements.map((e) => [e.agentNodeId, e]));
   const skip = redundantLabels(snap.elements);
   const lines = [];
@@ -37439,20 +37479,20 @@ function formatChange(snap, tabId) {
   for (const a of d.added ?? []) {
     const e = byId.get(a.agentNodeId);
     if (e && !skip.has(e.agentNodeId)) {
-      lines.push(`+ ${elementLine(e, snap.viewport, snap.layers)}${a.why === "new" ? "" : ` (${a.why.replace(/_/g, " ")})`}`);
+      lines.push(`+ ${elementLine(e, snap.viewport, letters, snap.layers)}${a.why === "new" ? "" : ` (${a.why.replace(/_/g, " ")})`}`);
     }
   }
   const removed = (d.removed ?? []).filter((r) => !(r.role === "LabelText" && skip.size));
   const outOfView = removed.filter((r) => r.why === "out_of_view");
   for (const r of outOfView.length > 5 ? removed.filter((r2) => r2.why !== "out_of_view") : removed) {
-    lines.push(`- ${r.label} ${roleWord(r)}${r.name ? ` ${JSON.stringify(clip(r.name))}` : ""} (${r.why.replace(/_/g, " ")})`);
+    lines.push(`- ${id2(r.label)} ${roleWord(r)}${r.name ? ` ${JSON.stringify(clip(r.name))}` : ""} (${r.why.replace(/_/g, " ")})`);
   }
   if (outOfView.length > 5) {
-    lines.push(`- ${outOfView.length} elements went out of view (${outOfView[0].label} \u2026 ${outOfView.at(-1).label})`);
+    lines.push(`- ${outOfView.length} elements went out of view (${id2(outOfView[0].label)} \u2026 ${id2(outOfView.at(-1).label)})`);
   }
   for (const c of d.changed ?? []) {
     const e = byId.get(c.agentNodeId);
-    const who = e ? `${e.label} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ""}` : `#${c.agentNodeId}`;
+    const who = e ? `${id2(e.label)} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ""}` : "an element not listed";
     if (c.what === "state") {
       const from = new Set(c.fromStates ?? []);
       const to = new Set(c.toStates ?? []);
@@ -37466,21 +37506,31 @@ function formatChange(snap, tabId) {
   }
   const reordered = (d.reordered ?? []).map((n) => byId.get(n)).filter(Boolean);
   if (reordered.length) {
-    const named = reordered.slice(0, 10).map((e) => `${e.label}${e.name ? ` ${JSON.stringify(clip(e.name, 40))}` : ""}`);
+    const named = reordered.slice(0, 10).map((e) => `${id2(e.label)}${e.name ? ` ${JSON.stringify(clip(e.name, 40))}` : ""}`);
     lines.push(`Order changed: ${named.join(", ")}${reordered.length > 10 ? ` and ${reordered.length - 10} more` : ""}`);
   }
-  if (d.focus) lines.push(d.focus.label ? `Focus on ${d.focus.label}` : "Focus left the listed elements");
+  if (d.focus) lines.push(d.focus.label ? `Focus on ${id2(d.focus.label)}` : "Focus left the listed elements");
   if (d.scroll) lines.push(`Scrolled to ${d.scroll.x},${d.scroll.y}`);
   lines.push(...heardLines(snap));
   if (d.partial) lines.push("A frame did not answer; its elements are as before.");
   if (!lines.length) return "No change on the page.";
   return lines.join("\n");
 }
+function unlabelled(c) {
+  const what = c.what ?? "";
+  const drop = (s) => s.replace(/^a\d+ "/, '"').replace(/^a\d+(?= \(|\)|$)/, "a listed element");
+  if (c.kind === "mutation") return drop(what);
+  if (c.kind !== "animation") return what;
+  const on = what.indexOf(" on ");
+  if (on >= 0) return what.slice(0, on + 4) + drop(what.slice(on + 4));
+  const end = what.lastIndexOf(" (a");
+  return end >= 0 && /^ \(a\d+( "|\)$)/.test(what.slice(end)) ? what.slice(0, end + 2) + drop(what.slice(end + 2)) : what;
+}
 function settleLine(report) {
   const s = report?.settle;
   if (!s) return "";
   if (s.settled) return "";
-  const what = (s.stillChanging ?? []).map((c) => `${c.kind} ${clip(c.what, 80)}`).join("; ");
+  const what = (s.stillChanging ?? []).map((c) => `${c.kind} ${clip(unlabelled(c), 80)}`).join("; ");
   return `The page had not settled after ${Math.round(s.afterMs)} ms${what ? `: still changing ${what}` : ""}.`;
 }
 
@@ -37493,10 +37543,10 @@ function image(snapshotId) {
   if (!img) throw new ToolError(`No snapshot ${snapshotId} (only the last ${KEEP_IMAGES} are kept). Call observe again.`);
   return img;
 }
-function keepImage(base643) {
+function keepImage(base643, letters) {
   if (!base643) return null;
   const id2 = `s${++snapshotCounter}`;
-  images.set(id2, { data: base643, mimeType: "image/jpeg" });
+  images.set(id2, { data: base643, mimeType: "image/jpeg", letters });
   while (images.size > KEEP_IMAGES) images.delete(images.keys().next().value);
   return id2;
 }
@@ -37521,8 +37571,9 @@ async function capture(tab, params) {
 }
 function remember(tab, snap) {
   tab.lastListingId = snap.listingId;
+  tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
   tab.viewport = { width: snap.viewport.width, height: snap.viewport.height };
-  return keepImage(snap.screenshot);
+  return keepImage(snap.screenshot, tab.letters);
 }
 function noticesOf(tab) {
   return [...tab.browser.takeNotices(), ...tab.takeNotices()];
@@ -37549,7 +37600,7 @@ async function afterAction(tab, said, outcome) {
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id2 = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), "", formatChange(r.snap, tab.id));
+  lines.push(...noticesOf(tab), "", formatChange(r.snap, tab.id, tab.letters));
   return withSnapshotId(lines.join("\n"), id2);
 }
 async function observe(tab, offscreen, scope) {
@@ -37557,7 +37608,7 @@ async function observe(tab, offscreen, scope) {
   await settle2(tab);
   const snap = await capture(tab, { offscreenMode: offscreen ?? "summary", scope: scope ?? "on" });
   const id2 = remember(tab, snap);
-  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id)].join("\n"), id2);
+  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters)].join("\n"), id2);
 }
 async function viewCentre(tab) {
   if (!tab.viewport) {
@@ -37579,13 +37630,30 @@ async function withPointer(tab, call) {
     return call(await pointerParams(tab));
   }
 }
-function agentNodeId(id2) {
-  const m = /^a?(\d+)$/.exec(id2.trim());
-  if (!m) throw new ToolError(`"${id2}" is not an element id; ids look like a12 and come from observe.`);
-  return Number(m[1]);
-}
 async function resolve(tab, id2) {
-  const node2 = await onActivePage(() => tab.send("Page.resolveAgentNode", { agentNodeId: agentNodeId(id2) }));
+  const m = /^([a-z]+)(\d+)$/i.exec(id2.trim());
+  if (!m) throw new ToolError(`"${id2}" is not an element id; ids look like a12 and come from the listings.`);
+  const page = pageOf(m[1].toLowerCase());
+  if (!page) throw new ToolError(`${id2} is not an id any listing gave. Call observe for current ids.`);
+  if (page.browser !== tab.browser.serial) {
+    throw new ToolError(`${id2} is from a browser closed since. Call observe for current ids.`);
+  }
+  if (page.targetId !== tab.targetId) {
+    throw new ToolError(
+      tab.browser.hasTarget(page.targetId) ? `${id2} is an element of tab ${tab.browser.tabIdFor(page.targetId)}, not of the selected tab ${tab.id}: tab_select it first, or use an id from this tab's listing.` : `${id2} is from a tab closed since. Call observe for current ids.`
+    );
+  }
+  const life = await onActivePage(() => tab.send("Page.agentNodesAlive", { labels: [`a${m[2]}`] }));
+  if (life.documentId !== page.documentId) {
+    throw new ToolError(
+      `${id2} is from a page this tab has since left (a navigation or a reload replaced it). Use the ids of the latest listing, or call observe.`
+    );
+  }
+  const node0 = life.nodes?.[0];
+  if (node0?.state === "elsewhere") {
+    throw new ToolError(`${id2} is not an element of this page. Call observe for current ids.`);
+  }
+  const node2 = node0?.agentNodeId === void 0 || node0.state === "gone" ? { found: false } : await onActivePage(() => tab.send("Page.resolveAgentNode", { agentNodeId: node0.agentNodeId }));
   if (!node2.found) throw new ToolError(`${id2} is no longer on the page or not laid out. Call observe for current ids.`);
   return { backendNodeId: node2.backendNodeId, frameId: node2.localRootFrameId, label: id2 };
 }
@@ -37826,7 +37894,7 @@ async function navigate(tab, opts) {
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id2 = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), "", formatListing(r.snap, tab.id));
+  lines.push(...noticesOf(tab), "", formatListing(r.snap, tab.id, tab.letters));
   return withSnapshotId(lines.join("\n"), id2);
 }
 async function answerDialog(tab, accept, text2) {
@@ -38172,12 +38240,12 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.2.0";
+var VERSION = "0.2.1";
 var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
 
-Elements are named by ids like a12 from the listings. An id stays valid while its element is on the page, across scrolls and later listings; a stale one is refused with the reason. Clicks move a real pointer along a curved path and scroll the element into view first; typing is human-paced, so long texts take seconds.
+Elements are named by ids like a12 from the listings. Each page gets its own letters (a12 on one page, b12 on the next after a navigation, a reload or in another tab); a page restored by going back keeps its letters. An id stays valid while its element is on its page, across scrolls and later listings; one from a page the tab has left, or a gone element, is refused with the reason, never used on another element. Clicks move a real pointer along a curved path and scroll the element into view first; typing is human-paced, so long texts take seconds.
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
 
@@ -38343,7 +38411,14 @@ server.registerTool(
   },
   (args) => guard(async () => {
     const img = image(args.snapshot_id);
-    return { content: [{ type: "image", data: img.data, mimeType: img.mimeType }] };
+    const content = [{ type: "image", data: img.data, mimeType: img.mimeType }];
+    if (img.letters !== "a") {
+      content.push({
+        type: "text",
+        text: `The badges read a12 and so on; on this page the ids are ${img.letters}12 and so on (badge a5 is ${img.letters}5).`
+      });
+    }
+    return { content };
   })
 );
 server.registerTool(
