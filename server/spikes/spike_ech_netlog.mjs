@@ -1,5 +1,5 @@
 // WITHDRAWN (2026-11-02): this script's reading of the net log is wrong. It
-// reported that Chromeleon issues no HTTPS-record queries; it does, exactly as
+// reported that Chromaphore issues no HTTPS-record queries; it does, exactly as
 // stock Chrome, and both give up on the answer after a short extra wait (the
 // stock-Chrome findings fork's research\ech.md and its
 // research\probes\netlog_dns_probe.mjs do this properly). Kept as a record.
@@ -23,7 +23,7 @@ const stock = exes[1] ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome
 
 for (const [label, exe, extra] of [
   ['stock Chrome', stock, ['--no-first-run', '--no-default-browser-check']],
-  ['Chromeleon', fork, []],
+  ['Chromaphore', fork, []],
 ]) {
   const profile = path.join(scratch, 'profiles', `netlog-${Date.now()}`);
   fs.mkdirSync(profile, { recursive: true });

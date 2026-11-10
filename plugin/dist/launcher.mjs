@@ -8,14 +8,18 @@ import path2 from "node:path";
 // src/paths.ts
 import os from "node:os";
 import path from "node:path";
-var DATA_ROOT = path.join(
-  process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"),
-  "Chromeleon"
-);
+var LOCAL = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+var DATA_ROOT = path.join(LOCAL, "Chromaphore");
 var PROFILES_DIR = path.join(DATA_ROOT, "profiles");
 var TEMP_PROFILES_DIR = path.join(DATA_ROOT, "temp");
 var BROWSERS_DIR = path.join(DATA_ROOT, "browser");
 var CURRENT_FILE = path.join(DATA_ROOT, "current.json");
+var PENDING_FILE = path.join(DATA_ROOT, "remove.json");
+var OLD_ROOT = path.join(LOCAL, "Chromeleon");
+var OLD_PROFILES_DIR = path.join(OLD_ROOT, "profiles");
+var OLD_BROWSERS_DIR = path.join(OLD_ROOT, "browser");
+var OLD_TEMP_PROFILES_DIR = path.join(OLD_ROOT, "temp");
+var OLD_CURRENT_FILE = path.join(OLD_ROOT, "current.json");
 
 // src/launcher.ts
 var argv = process.argv.slice(2);

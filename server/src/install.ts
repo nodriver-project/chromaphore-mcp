@@ -1,15 +1,25 @@
 // browser_install: the latest full build from the GitHub Releases page,
 // checked against the SHA-256 GitHub publishes for every asset, unpacked
-// under %LOCALAPPDATA%\Chromeleon\browser\<tag>.
+// under %LOCALAPPDATA%\Chromaphore\browser\<tag>.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { ToolError } from './browser.js';
-import { BROWSERS_DIR, CURRENT_FILE, DATA_ROOT, installedBrowser } from './paths.js';
+import {
+  BROWSERS_DIR,
+  configuredBrowser,
+  CURRENT_FILE,
+  DATA_ROOT,
+  installedBrowser,
+  OLD_CURRENT_FILE,
+  removeOldRootIfEmpty,
+  isTag,
+  removeRelease,
+} from './paths.js';
 
-const RELEASES = 'https://api.github.com/repos/nodriver-project/Chromeleon-Browser/releases/latest';
+const RELEASES = 'https://api.github.com/repos/nodriver-project/Chromaphore-Browser/releases/latest';
 
 export type Progress = (done: number, total: number, message: string) => void;
 
@@ -20,10 +30,10 @@ interface Asset {
   browser_download_url: string;
 }
 
-// The portable zip, by the name every release gives it from Chromeleon 1.0.0
-// on (the browser's docs/releases.md):
-// Chromeleon-<release>-chromium<chromium>-windows-x64-portable.zip.
-const PORTABLE_ZIP = /^Chromeleon-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
+// The portable zip, by the name every release gives it (the browser's
+// docs/releases.md): Chromaphore-<release>-chromium<chromium>-windows-x64-portable.zip,
+// or Chromeleon-... for the releases from 1.0.0 published before the rename.
+const PORTABLE_ZIP = /^(?:Chromaphore|Chromeleon)-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
 
 function pickZip(assets: Asset[]): Asset | undefined {
   return assets.find((a) => PORTABLE_ZIP.test(a.name));
@@ -36,10 +46,12 @@ export async function latestRelease(): Promise<{ tag: string; asset: Asset }> {
   const asset = pickZip(rel.assets ?? []);
   if (!asset) {
     throw new ToolError(
-      `The latest release (${rel.tag_name}) has no Chromeleon portable zip; releases before Chromeleon 1.0.0 ` +
-        'are too old for this plugin.',
+      `The latest release (${rel.tag_name}) has no portable zip by the name the plugin knows; releases before 1.0.0 ` +
+        'are too old for this plugin, and a newer naming needs a newer plugin.',
     );
   }
+  // The tag names the release's folder.
+  if (!isTag(rel.tag_name)) throw new ToolError(`The latest release has a tag the plugin cannot use: ${JSON.stringify(rel.tag_name)}.`);
   return { tag: rel.tag_name, asset };
 }
 
@@ -70,8 +82,8 @@ function run(cmd: string, args: string[]): Promise<void> {
 // only when there would be one.
 export async function checkInstall(): Promise<string> {
   const lines: string[] = [];
-  const configured = process.env.CHROMELEON_BROWSER?.trim();
-  if (configured && !configured.includes('${')) {
+  const configured = configuredBrowser();
+  if (configured) {
     const there = fs.existsSync(configured) ? '' : ' (that file does not exist)';
     lines.push(`The plugin settings name a browser of their own: ${configured}${there}. browser_open uses it, not an installed release.`);
   }
@@ -140,10 +152,20 @@ export async function install(progress: Progress, signal: AbortSignal): Promise<
 
   const exe = findExe(dir);
   if (!exe) throw new ToolError(`No chrome.exe in the unpacked release under ${dir}.`);
+  // Read again: during the download another session's server may have moved
+  // the release a version before 0.2.0 installed (moveFromChromeleon).
+  const replaced = installedBrowser();
   fs.writeFileSync(CURRENT_FILE, JSON.stringify({ tag, exe }, null, 2));
-  if (current && current.tag !== tag) {
-    const old = path.join(BROWSERS_DIR, current.tag);
-    fs.rmSync(old, { recursive: true, force: true });
+  const lines = [`Installed release ${tag} (SHA-256 checked${asset.digest ? '' : ': none published, so not compared'}): ${exe}`];
+  if (replaced && path.resolve(replaced.dir).toLowerCase() !== path.resolve(dir).toLowerCase() && fs.existsSync(replaced.dir)) {
+    if ((await removeRelease(replaced.dir)) === 'kept') {
+      lines.push(
+        `The replaced release's folder is in use (a browser still running from it, or another program), so it stays for now and is deleted at a later start of the plugin: ${replaced.dir}`,
+      );
+    }
   }
-  return `Installed release ${tag} (SHA-256 checked${asset.digest ? '' : ': none published, so not compared'}): ${exe}`;
+  // The record of a version before 0.2.0, which names the replaced release.
+  fs.rmSync(OLD_CURRENT_FILE, { force: true });
+  removeOldRootIfEmpty();
+  return lines.join('\n');
 }

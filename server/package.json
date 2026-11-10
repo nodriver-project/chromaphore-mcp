@@ -1,10 +1,10 @@
 {
-  "name": "chromeleon-mcp-server",
+  "name": "chromaphore-mcp-server",
   "license": "Apache-2.0",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Source of the chromeleon plugin's MCP server; bundled into plugin/dist/server.js.",
+  "description": "Source of the chromaphore plugin's MCP server; bundled into plugin/dist/server.mjs.",
   "engines": {
     "node": ">=20"
   },

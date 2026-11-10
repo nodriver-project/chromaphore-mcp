@@ -4,7 +4,7 @@
 // cleanly (profile exit_type Normal, no browser process left). With --temp
 // the browser opens on a temporary profile, which must be gone afterwards.
 // Usage: node test/claude_session.mjs [--temp]
-// The browser comes from %LOCALAPPDATA%\Chromeleon\current.json, as after
+// The browser comes from %LOCALAPPDATA%\Chromaphore\current.json, as after
 // browser_install.
 import http from 'node:http';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ const url = `http://127.0.0.1:${site.address().port}/`;
 
 const temp = process.argv.includes('--temp');
 const prompt =
-  `Use the chromeleon browser tools: open the browser headless${temp ? ' with profile "temp"' : ''} at ${url}, ` +
+  `Use the chromaphore browser tools: open the browser headless${temp ? ' with profile "temp"' : ''} at ${url}, ` +
   'then observe the page. ' +
   'Do not close the browser. Reply with the profile path from browser_open on a line starting "PROFILE:" ' +
   'and the button names you saw.';
@@ -32,7 +32,7 @@ const t0 = Date.now();
 const out = await new Promise((resolve, reject) => {
   const p = spawn(
     'claude',
-    ['-p', prompt, '--plugin-dir', pluginDir, '--allowedTools', 'mcp__plugin_chromeleon_browser__*', '--max-turns', '8'],
+    ['-p', prompt, '--plugin-dir', pluginDir, '--allowedTools', 'mcp__plugin_chromaphore_browser__*', '--max-turns', '8'],
     { stdio: ['ignore', 'pipe', 'inherit'] },
   );
   let text = '';

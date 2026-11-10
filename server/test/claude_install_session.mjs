@@ -12,20 +12,20 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pluginDir = path.resolve(here, '../../plugin');
-const root = path.join(process.env.LOCALAPPDATA, 'Chromeleon');
+const root = path.join(process.env.LOCALAPPDATA, 'Chromaphore');
 const currentFile = path.join(root, 'current.json');
 const before = fs.existsSync(currentFile) ? JSON.parse(fs.readFileSync(currentFile, 'utf8')) : null;
 console.log(`installed before: ${before ? before.tag : 'nothing'}`);
 
 const prompt =
-  'I agree to the browser download (about 1.6 GB). Using the chromeleon browser tools: call browser_install, ' +
+  'I agree to the browser download (about 1.6 GB). Using the chromaphore browser tools: call browser_install, ' +
   'then browser_open with headless true and url https://example.com, then browser_close. Reply with ' +
   "browser_install's answer verbatim, the browser version browser_open reported, and the page's main heading.";
 const t0 = Date.now();
 const out = await new Promise((resolve, reject) => {
   const p = spawn(
     'claude',
-    ['-p', prompt, '--plugin-dir', pluginDir, '--allowedTools', 'mcp__plugin_chromeleon_browser__*', '--max-turns', '10'],
+    ['-p', prompt, '--plugin-dir', pluginDir, '--allowedTools', 'mcp__plugin_chromaphore_browser__*', '--max-turns', '10'],
     { stdio: ['ignore', 'pipe', 'inherit'] },
   );
   let text = '';
@@ -44,7 +44,7 @@ if (before && after && before.tag !== after.tag) {
 console.log(`release folders now: ${fs.readdirSync(path.join(root, 'browser')).join(', ')}`);
 const running = execFileSync(
   'powershell',
-  ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*Chromeleon\\profiles*' } | Measure-Object).Count`],
+  ['-NoProfile', '-Command', `(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like '*Chromaphore\\profiles*' } | Measure-Object).Count`],
   { encoding: 'utf8' },
 ).trim();
 console.log(`browser processes left: ${running}`);

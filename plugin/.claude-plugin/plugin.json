@@ -1,19 +1,19 @@
 {
-  "name": "chromeleon",
-  "displayName": "Chromeleon Browser",
-  "version": "0.1.2",
-  "description": "Drive the Chromeleon browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
+  "name": "chromaphore",
+  "displayName": "Chromaphore Browser",
+  "version": "0.2.0",
+  "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
   "author": {
-    "name": "Chromeleon"
+    "name": "Chromaphore"
   },
-  "repository": "https://github.com/nodriver-project/chromeleon-mcp",
+  "repository": "https://github.com/nodriver-project/chromaphore-mcp",
   "license": "Apache-2.0",
   "keywords": ["browser", "automation", "testing", "cdp"],
   "userConfig": {
     "browser_path": {
       "type": "file",
       "title": "Browser (optional)",
-      "description": "A chrome.exe of Chromeleon to use instead of the one browser_install downloads. Leave empty to use the installed release.",
+      "description": "A chrome.exe of Chromaphore to use instead of the one browser_install downloads. Leave empty to use the installed release.",
       "default": ""
     }
   }

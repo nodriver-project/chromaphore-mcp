@@ -8,7 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const env = { ...process.env };
-delete env.CHROMELEON_BROWSER;
+delete env.CHROMAPHORE_BROWSER;
 const client = new Client({ name: 'install-test', version: '0' });
 await client.connect(
   new StdioClientTransport({

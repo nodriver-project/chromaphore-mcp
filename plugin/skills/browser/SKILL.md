@@ -1,9 +1,9 @@
 ---
 name: browser
-description: How to drive the Chromeleon browser tools well — testing or debugging a web app, reproducing a bug with real input, checking a page as a visitor sees it, or reading a site through a real browser. Load before the first browser_open in a task.
+description: How to drive the Chromaphore browser tools well — testing or debugging a web app, reproducing a bug with real input, checking a page as a visitor sees it, or reading a site through a real browser. Load before the first browser_open in a task.
 ---
 
-# Driving the Chromeleon browser
+# Driving the Chromaphore browser
 
 The browser tools act like a person at a real browser: the pointer travels to what it clicks, the wheel scrolls, keys are typed at a human pace. Pages see trusted input and an ordinary Chrome. That makes the tools right for reproducing what users hit; it also means actions take human time (a click about a second, typing about six characters a second).
 

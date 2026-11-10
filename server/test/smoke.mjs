@@ -37,7 +37,7 @@ const origin = `http://127.0.0.1:${site.address().port}`;
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.resolve(here, '../../plugin/dist/server.mjs')],
-  env: { ...process.env, CHROMELEON_BROWSER: exe },
+  env: { ...process.env, CHROMAPHORE_BROWSER: exe },
   stderr: 'inherit',
 });
 const client = new Client({ name: 'smoke', version: '0' });

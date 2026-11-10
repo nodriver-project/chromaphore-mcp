@@ -7,7 +7,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CdpError, Connection, type CdpEvent } from './cdp.js';
-import { browserExe, newProfileDir, TEMP_PROFILES_DIR } from './paths.js';
+import {
+  browserExe,
+  movedProfile,
+  newProfileDir,
+  OLD_TEMP_PROFILES_DIR,
+  profileInUse,
+  removeOldRootIfEmpty,
+  TEMP_PROFILES_DIR,
+} from './paths.js';
 
 export class ToolError extends Error {}
 
@@ -46,7 +54,7 @@ const BASE_SWITCHES = [
   '--disable-backgrounding-occluded-windows',
   '--disable-background-timer-throttling',
   // Merged by the browser with its preset's list (which disables AimEnabled
-  // itself from Chromeleon 1.0.0 on). Prerender2: no hidden prerendered pages
+  // itself from release 1.0.0 on). Prerender2: no hidden prerendered pages
   // or extra targets under the agent. UseEcoQoSForBackgroundProcess:
   // background tabs off Windows' efficiency mode.
   '--disable-features=Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync',
@@ -147,7 +155,7 @@ export class Browser {
     } else if (!options.profile || options.profile === 'new') {
       profile = newProfileDir();
     } else {
-      profile = path.resolve(options.profile);
+      profile = movedProfile(path.resolve(options.profile));
       if (!fs.existsSync(profile)) {
         throw new ToolError(`No profile folder at ${profile}. Pass "new" for a new profile.`);
       }
@@ -184,7 +192,7 @@ export class Browser {
       browser.version = String(v.product ?? '').replace(/^\D+\//, '');
       if (Number(browser.version.split('.')[0]) < MIN_MAJOR) {
         throw new ToolError(
-          `This browser is Chromeleon ${browser.version}; the plugin needs ${MIN_MAJOR} or later. ` +
+          `This browser is Chromaphore ${browser.version}; the plugin needs ${MIN_MAJOR} or later. ` +
             'Call browser_install for the latest release, or set a newer chrome.exe in the plugin settings.',
         );
       }
@@ -390,38 +398,30 @@ export async function onActivePage<T>(fn: () => Promise<T>, ms = 3000): Promise<
   }
 }
 
-function profileInUse(profile: string): boolean {
-  // A running browser holds its profile's lockfile open; a stale one can go.
-  const lock = path.join(profile, 'lockfile');
-  if (!fs.existsSync(lock)) return false;
-  try {
-    fs.rmSync(lock);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
 // Temporary profiles whose reaper never ran (the machine went down with the
 // browser open): any not in use and untouched for an hour. The hour leaves
-// alone a folder another server has just made and not yet launched on.
+// alone a folder another server has just made and not yet launched on. The
+// folder of versions before 0.2.0 too, which is removed once empty.
 function sweepTempProfiles(): void {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(TEMP_PROFILES_DIR, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(TEMP_PROFILES_DIR, entry.name);
+  for (const parent of [TEMP_PROFILES_DIR, OLD_TEMP_PROFILES_DIR]) {
+    let entries: fs.Dirent[];
     try {
-      if (Date.now() - fs.statSync(dir).mtimeMs < 3_600_000 || profileInUse(dir)) continue;
-      fs.rmSync(dir, { recursive: true, force: true });
+      entries = fs.readdirSync(parent, { withFileTypes: true });
     } catch {
-      // In use after all, or half deleted: the next sweep tries again.
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(parent, entry.name);
+      try {
+        if (Date.now() - fs.statSync(dir).mtimeMs < 3_600_000 || profileInUse(dir)) continue;
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // In use after all, or half deleted: the next sweep tries again.
+      }
     }
   }
+  removeOldRootIfEmpty();
 }
 
 // Starts the browser through launcher.mjs so it is outside this process's

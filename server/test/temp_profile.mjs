@@ -10,10 +10,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const TEMP = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Chromeleon', 'temp');
+const TEMP = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Chromaphore', 'temp');
 const env = { ...process.env };
-if (process.argv[2]) env.CHROMELEON_BROWSER = process.argv[2];
-else delete env.CHROMELEON_BROWSER;
+if (process.argv[2]) env.CHROMAPHORE_BROWSER = process.argv[2];
+else delete env.CHROMAPHORE_BROWSER;
 
 let failures = 0;
 const check = (ok, what) => {

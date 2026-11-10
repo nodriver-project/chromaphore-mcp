@@ -27583,13 +27583,13 @@ var recordProcessor = (schema, ctx, _json, params) => {
         ...params,
         path: [...params.path, "propertyNames"]
       });
-      let pending = pendingRecords.get(ctx);
-      if (!pending) {
-        pending = [];
-        pendingRecords.set(ctx, pending);
+      let pending2 = pendingRecords.get(ctx);
+      if (!pending2) {
+        pending2 = [];
+        pendingRecords.set(ctx, pending2);
         ctx.deferred.push(() => rewriteKeyNames(ctx));
       }
-      pending.push(schema);
+      pending2.push(schema);
     }
     json2.additionalProperties = processSchema(def.valueType, ctx, {
       ...params,
@@ -36760,32 +36760,192 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-var DATA_ROOT = path.join(
-  process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"),
-  "Chromeleon"
-);
+var LOCAL = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
+var DATA_ROOT = path.join(LOCAL, "Chromaphore");
 var PROFILES_DIR = path.join(DATA_ROOT, "profiles");
 var TEMP_PROFILES_DIR = path.join(DATA_ROOT, "temp");
 var BROWSERS_DIR = path.join(DATA_ROOT, "browser");
 var CURRENT_FILE = path.join(DATA_ROOT, "current.json");
+var PENDING_FILE = path.join(DATA_ROOT, "remove.json");
+var OLD_ROOT = path.join(LOCAL, "Chromeleon");
+var OLD_PROFILES_DIR = path.join(OLD_ROOT, "profiles");
+var OLD_BROWSERS_DIR = path.join(OLD_ROOT, "browser");
+var OLD_TEMP_PROFILES_DIR = path.join(OLD_ROOT, "temp");
+var OLD_CURRENT_FILE = path.join(OLD_ROOT, "current.json");
 function browserExe() {
-  const configured = process.env.CHROMELEON_BROWSER?.trim();
-  if (configured && !configured.includes("${")) return configured;
+  const configured = configuredBrowser();
+  if (configured) return configured;
   const installed = installedBrowser();
   return installed && fs.existsSync(installed.exe) ? installed.exe : null;
 }
-function installedBrowser() {
+function configuredBrowser() {
+  const configured = process.env.CHROMAPHORE_BROWSER?.trim();
+  return configured && !configured.includes("${") ? configured : null;
+}
+var isTag = (tag) => typeof tag === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(tag);
+function readRecord(file2) {
   try {
-    return JSON.parse(fs.readFileSync(CURRENT_FILE, "utf8"));
+    const { tag, exe } = JSON.parse(fs.readFileSync(file2, "utf8"));
+    return isTag(tag) && typeof exe === "string" ? { tag, exe } : null;
   } catch {
     return null;
   }
 }
+function installedBrowser() {
+  for (const file2 of [CURRENT_FILE, OLD_CURRENT_FILE]) {
+    const record2 = readRecord(file2);
+    if (record2) return { ...record2, dir: releaseDir(record2.exe, record2.tag) };
+  }
+  return null;
+}
+function releaseDir(exe, tag) {
+  for (let dir = path.dirname(exe); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+    if (path.basename(dir) === tag && path.basename(path.dirname(dir)).toLowerCase() === "browser") return dir;
+  }
+  return path.join(BROWSERS_DIR, tag);
+}
+var samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 function newProfileDir(temp = false) {
   const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
   const dir = path.join(temp ? TEMP_PROFILES_DIR : PROFILES_DIR, `${stamp2}-${Math.random().toString(16).slice(2, 6)}`);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+function profileInUse(profile) {
+  const lock = path.join(profile, "lockfile");
+  if (!fs.existsSync(lock)) return false;
+  try {
+    fs.rmSync(lock);
+    return false;
+  } catch {
+    return true;
+  }
+}
+async function removeRelease(dir) {
+  const doomed = `${dir}-removing`;
+  try {
+    await fs.promises.rm(doomed, { recursive: true, force: true });
+    fs.renameSync(dir, doomed);
+  } catch {
+    if (fs.existsSync(dir)) {
+      addPending(dir);
+      return "kept";
+    }
+    dropPending(dir);
+    return "removed";
+  }
+  dropPending(dir);
+  addPending(doomed);
+  try {
+    await fs.promises.rm(doomed, { recursive: true, force: true });
+    dropPending(doomed);
+  } catch {
+  }
+  return "removed";
+}
+function pending() {
+  try {
+    const list = JSON.parse(fs.readFileSync(PENDING_FILE, "utf8"));
+    return Array.isArray(list) ? list.filter(
+      (d) => typeof d === "string" && [BROWSERS_DIR, OLD_BROWSERS_DIR].some((parent) => samePath(path.dirname(d), parent))
+    ) : [];
+  } catch {
+    return [];
+  }
+}
+function setPending(list) {
+  if (list.length === 0) fs.rmSync(PENDING_FILE, { force: true });
+  else fs.writeFileSync(PENDING_FILE, JSON.stringify(list, null, 2));
+}
+function addPending(dir) {
+  setPending([...pending().filter((d) => !samePath(d, dir)), dir]);
+}
+function dropPending(dir) {
+  const list = pending();
+  if (list.some((d) => samePath(d, dir))) setPending(list.filter((d) => !samePath(d, dir)));
+}
+async function removePendingReleases() {
+  const list = pending();
+  if (list.length === 0) return;
+  const current2 = installedBrowser();
+  for (const dir of list) {
+    if (current2 && samePath(dir, current2.dir)) {
+      dropPending(dir);
+    } else if (!fs.existsSync(dir)) {
+      dropPending(dir);
+    } else if (dir.endsWith("-removing")) {
+      await fs.promises.rm(dir, { recursive: true, force: true }).then(
+        () => dropPending(dir),
+        () => {
+        }
+      );
+    } else {
+      await removeRelease(dir);
+    }
+  }
+  removeOldRootIfEmpty();
+}
+function moveFromChromeleon() {
+  moveOldRelease();
+  moveOldProfiles();
+  removeOldRootIfEmpty();
+}
+function moveOldRelease() {
+  const old = readRecord(OLD_CURRENT_FILE);
+  if (!old) return;
+  const current2 = readRecord(CURRENT_FILE);
+  if (current2 && fs.existsSync(current2.exe)) return;
+  const from = path.join(OLD_BROWSERS_DIR, old.tag);
+  const to = path.join(BROWSERS_DIR, old.tag);
+  const inside = path.relative(from, old.exe);
+  if (inside.startsWith("..") || path.isAbsolute(inside)) return;
+  if (fs.existsSync(from)) {
+    if (fs.existsSync(to)) return;
+    try {
+      fs.mkdirSync(BROWSERS_DIR, { recursive: true });
+      fs.renameSync(from, to);
+    } catch {
+      return;
+    }
+  } else if (!fs.existsSync(path.join(to, inside))) {
+    return;
+  }
+  const record2 = JSON.stringify({ tag: old.tag, exe: path.join(to, inside) }, null, 2);
+  fs.writeFileSync(CURRENT_FILE, record2);
+  fs.writeFileSync(OLD_CURRENT_FILE, record2);
+}
+function moveOldProfiles() {
+  let names;
+  try {
+    names = fs.readdirSync(OLD_PROFILES_DIR);
+  } catch {
+    return;
+  }
+  fs.mkdirSync(PROFILES_DIR, { recursive: true });
+  for (const name of names) {
+    const from = path.join(OLD_PROFILES_DIR, name);
+    const to = path.join(PROFILES_DIR, name);
+    try {
+      const stat = fs.statSync(from);
+      if (fs.existsSync(to) || !stat.isDirectory() || Date.now() - stat.mtimeMs < 6e5) continue;
+      if (profileInUse(from)) continue;
+      fs.renameSync(from, to);
+    } catch {
+    }
+  }
+}
+function movedProfile(profile) {
+  if (fs.existsSync(profile) || !samePath(path.dirname(profile), OLD_PROFILES_DIR)) return profile;
+  const moved = path.join(PROFILES_DIR, path.basename(profile));
+  return fs.existsSync(moved) ? moved : profile;
+}
+function removeOldRootIfEmpty() {
+  for (const dir of [OLD_PROFILES_DIR, OLD_TEMP_PROFILES_DIR, OLD_BROWSERS_DIR, OLD_ROOT]) {
+    try {
+      fs.rmdirSync(dir);
+    } catch {
+    }
+  }
 }
 
 // src/browser.ts
@@ -36812,7 +36972,7 @@ var BASE_SWITCHES = [
   "--disable-backgrounding-occluded-windows",
   "--disable-background-timer-throttling",
   // Merged by the browser with its preset's list (which disables AimEnabled
-  // itself from Chromeleon 1.0.0 on). Prerender2: no hidden prerendered pages
+  // itself from release 1.0.0 on). Prerender2: no hidden prerendered pages
   // or extra targets under the agent. UseEcoQoSForBackgroundProcess:
   // background tabs off Windows' efficiency mode.
   "--disable-features=Prerender2,UseEcoQoSForBackgroundProcess,AvoidUnnecessaryBeforeUnloadCheckSync"
@@ -36909,7 +37069,7 @@ var Browser = class _Browser {
     } else if (!options.profile || options.profile === "new") {
       profile = newProfileDir();
     } else {
-      profile = path2.resolve(options.profile);
+      profile = movedProfile(path2.resolve(options.profile));
       if (!fs2.existsSync(profile)) {
         throw new ToolError(`No profile folder at ${profile}. Pass "new" for a new profile.`);
       }
@@ -36943,7 +37103,7 @@ var Browser = class _Browser {
       browser2.version = String(v.product ?? "").replace(/^\D+\//, "");
       if (Number(browser2.version.split(".")[0]) < MIN_MAJOR) {
         throw new ToolError(
-          `This browser is Chromeleon ${browser2.version}; the plugin needs ${MIN_MAJOR} or later. Call browser_install for the latest release, or set a newer chrome.exe in the plugin settings.`
+          `This browser is Chromaphore ${browser2.version}; the plugin needs ${MIN_MAJOR} or later. Call browser_install for the latest release, or set a newer chrome.exe in the plugin settings.`
         );
       }
       await conn.send("Target.setDiscoverTargets", { discover: true });
@@ -37129,32 +37289,25 @@ async function onActivePage(fn, ms = 3e3) {
     }
   }
 }
-function profileInUse(profile) {
-  const lock = path2.join(profile, "lockfile");
-  if (!fs2.existsSync(lock)) return false;
-  try {
-    fs2.rmSync(lock);
-    return false;
-  } catch {
-    return true;
-  }
-}
 function sweepTempProfiles() {
-  let entries;
-  try {
-    entries = fs2.readdirSync(TEMP_PROFILES_DIR, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const dir = path2.join(TEMP_PROFILES_DIR, entry.name);
+  for (const parent of [TEMP_PROFILES_DIR, OLD_TEMP_PROFILES_DIR]) {
+    let entries;
     try {
-      if (Date.now() - fs2.statSync(dir).mtimeMs < 36e5 || profileInUse(dir)) continue;
-      fs2.rmSync(dir, { recursive: true, force: true });
+      entries = fs2.readdirSync(parent, { withFileTypes: true });
     } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path2.join(parent, entry.name);
+      try {
+        if (Date.now() - fs2.statSync(dir).mtimeMs < 36e5 || profileInUse(dir)) continue;
+        fs2.rmSync(dir, { recursive: true, force: true });
+      } catch {
+      }
     }
   }
+  removeOldRootIfEmpty();
 }
 async function launchOutsideTree(exe, args, tempProfile) {
   const launcher = path2.join(path2.dirname(fileURLToPath(import.meta.url)), "launcher.mjs");
@@ -37901,8 +38054,8 @@ import { createHash } from "node:crypto";
 import fs5 from "node:fs";
 import path5 from "node:path";
 import { Readable } from "node:stream";
-var RELEASES = "https://api.github.com/repos/nodriver-project/Chromeleon-Browser/releases/latest";
-var PORTABLE_ZIP = /^Chromeleon-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
+var RELEASES = "https://api.github.com/repos/nodriver-project/Chromaphore-Browser/releases/latest";
+var PORTABLE_ZIP = /^(?:Chromaphore|Chromeleon)-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
 function pickZip(assets) {
   return assets.find((a) => PORTABLE_ZIP.test(a.name));
 }
@@ -37913,9 +38066,10 @@ async function latestRelease() {
   const asset = pickZip(rel.assets ?? []);
   if (!asset) {
     throw new ToolError(
-      `The latest release (${rel.tag_name}) has no Chromeleon portable zip; releases before Chromeleon 1.0.0 are too old for this plugin.`
+      `The latest release (${rel.tag_name}) has no portable zip by the name the plugin knows; releases before 1.0.0 are too old for this plugin, and a newer naming needs a newer plugin.`
     );
   }
+  if (!isTag(rel.tag_name)) throw new ToolError(`The latest release has a tag the plugin cannot use: ${JSON.stringify(rel.tag_name)}.`);
   return { tag: rel.tag_name, asset };
 }
 function findExe(dir, depth = 3) {
@@ -37940,8 +38094,8 @@ function run(cmd, args) {
 }
 async function checkInstall() {
   const lines = [];
-  const configured = process.env.CHROMELEON_BROWSER?.trim();
-  if (configured && !configured.includes("${")) {
+  const configured = configuredBrowser();
+  if (configured) {
     const there = fs5.existsSync(configured) ? "" : " (that file does not exist)";
     lines.push(`The plugin settings name a browser of their own: ${configured}${there}. browser_open uses it, not an installed release.`);
   }
@@ -38002,17 +38156,24 @@ async function install(progress, signal) {
   fs5.rmSync(zip, { force: true });
   const exe = findExe(dir);
   if (!exe) throw new ToolError(`No chrome.exe in the unpacked release under ${dir}.`);
+  const replaced = installedBrowser();
   fs5.writeFileSync(CURRENT_FILE, JSON.stringify({ tag, exe }, null, 2));
-  if (current2 && current2.tag !== tag) {
-    const old = path5.join(BROWSERS_DIR, current2.tag);
-    fs5.rmSync(old, { recursive: true, force: true });
+  const lines = [`Installed release ${tag} (SHA-256 checked${asset.digest ? "" : ": none published, so not compared"}): ${exe}`];
+  if (replaced && path5.resolve(replaced.dir).toLowerCase() !== path5.resolve(dir).toLowerCase() && fs5.existsSync(replaced.dir)) {
+    if (await removeRelease(replaced.dir) === "kept") {
+      lines.push(
+        `The replaced release's folder is in use (a browser still running from it, or another program), so it stays for now and is deleted at a later start of the plugin: ${replaced.dir}`
+      );
+    }
   }
-  return `Installed release ${tag} (SHA-256 checked${asset.digest ? "" : ": none published, so not compared"}): ${exe}`;
+  fs5.rmSync(OLD_CURRENT_FILE, { force: true });
+  removeOldRootIfEmpty();
+  return lines.join("\n");
 }
 
 // src/server.ts
-var VERSION = "0.1.2";
-var INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
+var VERSION = "0.2.0";
+var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
 
@@ -38020,7 +38181,7 @@ Elements are named by ids like a12 from the listings. An id stays valid while it
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
 
-Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromeleon:browser has more.`;
+Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
 var server = new McpServer({ name: "browser", version: VERSION }, { instructions: INSTRUCTIONS });
 var browser = null;
 var text = (t, isError = false) => ({ content: [{ type: "text", text: t }], ...isError ? { isError } : {} });
@@ -38043,7 +38204,7 @@ server.registerTool(
   "browser_install",
   {
     title: "Install the browser",
-    description: "Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.",
+    description: "Downloads the latest Chromaphore release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromaphore, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.",
     inputSchema: {
       check_only: external_exports.boolean().optional().describe("Report the installed release and the latest one on GitHub; download nothing.")
     }
@@ -38081,7 +38242,7 @@ server.registerTool(
     browser = await Browser.open({ profile: args.profile, seed: args.seed, headless: args.headless });
     const tab = await browser.newTab();
     const lines = [
-      `Browser open: Chromeleon ${browser.version}, ${browser.headless ? "headless" : "with a window"}.`,
+      `Browser open: Chromaphore ${browser.version}, ${browser.headless ? "headless" : "with a window"}.`,
       browser.temp ? `Profile: temporary, deleted when the browser closes (${browser.profile})` : `Profile: ${browser.profile}`,
       `Fingerprint seed: ${browser.seed ?? "unknown"}${browser.bundleActive === false ? " (the font bundle is not active: system fonts)" : ""}`,
       `Tab ${tab.id} is open.`
@@ -38397,4 +38558,10 @@ process.stdin.on("end", () => {
   }
   setTimeout(() => process.exit(0), 250);
 });
+try {
+  moveFromChromeleon();
+} catch {
+}
 await server.connect(new StdioServerTransport());
+removePendingReleases().catch(() => {
+});

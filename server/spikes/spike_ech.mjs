@@ -19,14 +19,14 @@ const stock = exes[1] ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome
 const SETUPS = process.argv.includes('--why')
   ? [
       // Narrowing down why the fork does not use ECH.
-      ['Chromeleon, --use-chromium-defaults (no preset)', fork, ['--use-chromium-defaults']],
-      ['Chromeleon, AsyncDns forced on', fork, ['--enable-features=AsyncDns']],
+      ['Chromaphore, --use-chromium-defaults (no preset)', fork, ['--use-chromium-defaults']],
+      ['Chromaphore, AsyncDns forced on', fork, ['--enable-features=AsyncDns']],
       ['stock Chrome, AsyncDns off', stock, ['--no-first-run', '--no-default-browser-check', '--disable-features=AsyncDns']],
     ]
   : [
       ['stock Chrome', stock, ['--no-first-run', '--no-default-browser-check']],
-      ['Chromeleon', fork, []],
-      ['Chromeleon, UseDnsHttpsSvcb off', fork, ['--disable-features=UseDnsHttpsSvcb']],
+      ['Chromaphore', fork, []],
+      ['Chromaphore, UseDnsHttpsSvcb off', fork, ['--disable-features=UseDnsHttpsSvcb']],
     ];
 
 async function bodyText(cdp, sessionId, url) {

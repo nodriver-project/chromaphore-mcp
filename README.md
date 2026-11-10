@@ -16,8 +16,8 @@ Windows only for now, like the browser.
 ## Install
 
 ```
-/plugin install Chromaphore --marketplace nodriver-project/Chromaphore-mcp
-/Chromaphore:install
+/plugin install chromaphore --marketplace nodriver-project/chromaphore-mcp
+/chromaphore:install
 ```
 
 The second command downloads the latest browser release (about 1.6 GB, mostly fonts) to `%LOCALAPPDATA%\Chromaphore`. To use a Chromaphore you already have instead, set the plugin's **Browser** option in `/config` to its `chrome.exe`.
@@ -27,8 +27,20 @@ The plugin needs [Node.js](https://nodejs.org) 20 or later on `PATH`.
 Claude Code asks before every tool call of a new plugin. To let the browser tools run without asking, add to `permissions.allow` in `~/.claude/settings.json`:
 
 ```json
-"mcp__plugin_Chromaphore_browser__*"
+"mcp__plugin_chromaphore_browser__*"
 ```
+
+### Upgrading from `chromeleon`
+
+Before 0.2.0 the plugin was named `chromeleon`. Claude Code sees the new name as a new plugin, so swap it once, from a terminal:
+
+```
+claude plugin uninstall chromeleon@chromeleon
+claude plugin marketplace remove chromeleon
+claude plugin install chromaphore --marketplace nodriver-project/chromaphore-mcp
+```
+
+Then `/reload-plugins` in sessions already running, change the allow rule to the one above, and set the **Browser** option again if you used it. Nothing is downloaded again: the release and the profiles the old plugin made move from `%LOCALAPPDATA%\Chromeleon` to `%LOCALAPPDATA%\Chromaphore` the first time the new plugin starts. Whatever a browser has open at that moment, and a profile used in the last ten minutes, moves at a later start; old profile paths keep working in the new plugin's `browser_open`.
 
 ## Tools
 
@@ -65,8 +77,8 @@ The browser is started outside Claude Code's process tree and closes itself clea
 - `.claude-plugin/marketplace.json`: the repository is its own marketplace.
 - `plugin/`: what Claude Code installs: the manifest, the MCP server config, the bundled server (`dist/`), the skills.
 - `server/`: the server's TypeScript source; `npm install`, then `node build.mjs` bundles it into `plugin/dist/` and writes `plugin/THIRD_PARTY_NOTICES.md`, `plugin/LICENSE` and `plugin/NOTICE`.
-  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `install.mjs` runs `browser_install`.
-  - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `Chromaphore_BROWSER` or the installed release.
+  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `migrate.mjs` moves a pre-0.2.0 install (`%LOCALAPPDATA%\Chromeleon`) to the new folder, with a browser of it running and then without, and works the list of releases left to delete; `install.mjs` runs `browser_install`.
+  - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `CHROMAPHORE_BROWSER` or the installed release.
 - `docs/DESIGN.md`: why the server works the way it does: the pipe, the launch outside the process tree, every launch switch, the automation-signal results, how actions settle.
 
 ## License

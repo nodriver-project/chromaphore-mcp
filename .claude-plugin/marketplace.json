@@ -1,13 +1,13 @@
 {
-  "name": "chromeleon",
+  "name": "chromaphore",
   "owner": {
-    "name": "Chromeleon"
+    "name": "Chromaphore"
   },
   "plugins": [
     {
-      "name": "chromeleon",
+      "name": "chromaphore",
       "source": "./plugin",
-      "description": "Drive the Chromeleon browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings."
+      "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings."
     }
   ]
 }

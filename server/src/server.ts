@@ -1,4 +1,4 @@
-// The MCP server Claude Code starts: browser tools over the Chromeleon
+// The MCP server Claude Code starts: browser tools over the Chromaphore
 // browser's custom CDP commands. Design notes: docs/DESIGN.md.
 import fs from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -9,10 +9,11 @@ import { Browser, ToolError } from './browser.js';
 import * as whole from './browser_tools.js';
 import { CdpError } from './cdp.js';
 import { checkInstall, install } from './install.js';
+import { moveFromChromeleon, removePendingReleases } from './paths.js';
 
-const VERSION = '0.1.2';
+const VERSION = '0.2.0';
 
-const INSTRUCTIONS = `Tools for driving the Chromeleon browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
+const INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
 
@@ -20,7 +21,7 @@ Elements are named by ids like a12 from the listings. An id stays valid while it
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
 
-Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromeleon:browser has more.`;
+Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
 
 const server = new McpServer({ name: 'browser', version: VERSION }, { instructions: INSTRUCTIONS });
 let browser: Browser | null = null;
@@ -53,7 +54,7 @@ server.registerTool(
   {
     title: 'Install the browser',
     description:
-      'Downloads the latest Chromeleon release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromeleon, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.',
+      'Downloads the latest Chromaphore release from GitHub (about 1.6 GB with its fonts), checks its SHA-256 and unpacks it under %LOCALAPPDATA%\\Chromaphore, replacing an older installed release; downloads nothing when the latest is already installed. With check_only it only reports what is installed and what the latest release is, and never downloads: call that first, and ask the user before a call that would download. Not needed when a browser path is set in the plugin settings.',
     inputSchema: {
       check_only: z
         .boolean()
@@ -109,7 +110,7 @@ server.registerTool(
       browser = await Browser.open({ profile: args.profile, seed: args.seed, headless: args.headless });
       const tab = await browser.newTab();
       const lines = [
-        `Browser open: Chromeleon ${browser.version}, ${browser.headless ? 'headless' : 'with a window'}.`,
+        `Browser open: Chromaphore ${browser.version}, ${browser.headless ? 'headless' : 'with a window'}.`,
         browser.temp
           ? `Profile: temporary, deleted when the browser closes (${browser.profile})`
           : `Profile: ${browser.profile}`,
@@ -495,4 +496,15 @@ process.stdin.on('end', () => {
   setTimeout(() => process.exit(0), 250);
 });
 
+// What the plugin kept under its name before 0.2.0 (paths.ts): renames
+// only, so quick, and done before the first tool call can launch from the old
+// place. A failure leaves things as they are and must not keep the server
+// from starting.
+try {
+  moveFromChromeleon();
+} catch {
+  // A later start tries again.
+}
 await server.connect(new StdioServerTransport());
+// Replaced releases left to delete: seconds of work, after the handshake.
+removePendingReleases().catch(() => {});

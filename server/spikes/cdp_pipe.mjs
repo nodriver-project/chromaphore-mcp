@@ -4,12 +4,14 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
-// The browser the spikes run when none is named: CHROMELEON_BROWSER, else the
-// one browser_install put in place.
+// The browser the spikes run when none is named: CHROMAPHORE_BROWSER, else the
+// one browser_install put in place (under the plugin's name before 0.2.0 too).
 function defaultExe() {
-  if (process.env.CHROMELEON_BROWSER) return process.env.CHROMELEON_BROWSER;
-  const current = `${process.env.LOCALAPPDATA}\\Chromeleon\\current.json`;
-  if (existsSync(current)) return JSON.parse(readFileSync(current, 'utf8')).exe;
+  if (process.env.CHROMAPHORE_BROWSER) return process.env.CHROMAPHORE_BROWSER;
+  for (const name of ['Chromaphore', 'Chromeleon']) {
+    const current = `${process.env.LOCALAPPDATA}\\${name}\\current.json`;
+    if (existsSync(current)) return JSON.parse(readFileSync(current, 'utf8')).exe;
+  }
   return undefined;
 }
 export const DEFAULT_EXE = defaultExe();
