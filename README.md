@@ -1,9 +1,9 @@
-# chromeleon-mcp
+# Chromaphore-mcp
 [![Discord](https://img.shields.io/discord/1499516872758923264?logo=discord&label=Discord)](https://discord.gg/EdRx3832Hw)
 
-**Support:**  [Discussions](https://github.com/nodriver-project/chromeleon-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromeleon-Browser/releases)
+**Support:**  [Discussions](https://github.com/nodriver-project/Chromaphore-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromaphore-Browser/releases)
 
-A Claude Code plugin that drives the [Chromeleon browser](https://github.com/nodriver-project/Chromeleon-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
+A Claude Code plugin that drives the [Chromaphore browser](https://github.com/nodriver-project/Chromaphore-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
 
 What Claude gets:
 
@@ -16,18 +16,18 @@ Windows only for now, like the browser.
 ## Install
 
 ```
-/plugin install chromeleon --marketplace nodriver-project/chromeleon-mcp
-/chromeleon:install
+/plugin install Chromaphore --marketplace nodriver-project/Chromaphore-mcp
+/Chromaphore:install
 ```
 
-The second command downloads the latest browser release (about 1.6 GB, mostly fonts) to `%LOCALAPPDATA%\Chromeleon`. To use a Chromeleon you already have instead, set the plugin's **Browser** option in `/config` to its `chrome.exe`.
+The second command downloads the latest browser release (about 1.6 GB, mostly fonts) to `%LOCALAPPDATA%\Chromaphore`. To use a Chromaphore you already have instead, set the plugin's **Browser** option in `/config` to its `chrome.exe`.
 
 The plugin needs [Node.js](https://nodejs.org) 20 or later on `PATH`.
 
 Claude Code asks before every tool call of a new plugin. To let the browser tools run without asking, add to `permissions.allow` in `~/.claude/settings.json`:
 
 ```json
-"mcp__plugin_chromeleon_browser__*"
+"mcp__plugin_Chromaphore_browser__*"
 ```
 
 ## Tools
@@ -50,13 +50,13 @@ Claude Code asks before every tool call of a new plugin. To let the browser tool
 | `eval_js` | Evaluates an expression in the page |
 | `screenshot` | Saves a PNG to a file |
 
-Requires Chromeleon 156 or later.
+Requires Chromaphore 156 or later.
 
 ## Where things live
 
-- `%LOCALAPPDATA%\Chromeleon\browser\<release>\`: the browser.
-- `%LOCALAPPDATA%\Chromeleon\profiles\`: profiles the tools created. Each holds that profile's cookies and logins; delete a folder to forget it.
-- `%LOCALAPPDATA%\Chromeleon\temp\`: temporary profiles while their browser runs; each is deleted when its browser exits.
+- `%LOCALAPPDATA%\Chromaphore\browser\<release>\`: the browser.
+- `%LOCALAPPDATA%\Chromaphore\profiles\`: profiles the tools created. Each holds that profile's cookies and logins; delete a folder to forget it.
+- `%LOCALAPPDATA%\Chromaphore\temp\`: temporary profiles while their browser runs; each is deleted when its browser exits.
 
 The browser is started outside Claude Code's process tree and closes itself cleanly when the session ends.
 
@@ -66,7 +66,7 @@ The browser is started outside Claude Code's process tree and closes itself clea
 - `plugin/`: what Claude Code installs: the manifest, the MCP server config, the bundled server (`dist/`), the skills.
 - `server/`: the server's TypeScript source; `npm install`, then `node build.mjs` bundles it into `plugin/dist/` and writes `plugin/THIRD_PARTY_NOTICES.md`, `plugin/LICENSE` and `plugin/NOTICE`.
   - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `install.mjs` runs `browser_install`.
-  - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `CHROMELEON_BROWSER` or the installed release.
+  - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `Chromaphore_BROWSER` or the installed release.
 - `docs/DESIGN.md`: why the server works the way it does: the pipe, the launch outside the process tree, every launch switch, the automation-signal results, how actions settle.
 
 ## License
