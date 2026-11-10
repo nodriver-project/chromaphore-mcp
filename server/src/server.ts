@@ -11,7 +11,7 @@ import { CdpError } from './cdp.js';
 import { checkInstall, install } from './install.js';
 import { moveFromChromeleon, removePendingReleases } from './paths.js';
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 
 const INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 

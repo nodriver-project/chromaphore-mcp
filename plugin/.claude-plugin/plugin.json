@@ -1,7 +1,7 @@
 {
   "name": "chromaphore",
   "displayName": "Chromaphore Browser",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
   "author": {
     "name": "Chromaphore"

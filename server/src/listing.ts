@@ -99,7 +99,9 @@ function redundantLabels(elements: any[]): Set<number> {
   );
 }
 
-export function formatListing(snap: any, tabId: string, letters: string): string {
+// `printed` is told each element a line was printed for (actions.ts keeps
+// them as what the agent was shown).
+export function formatListing(snap: any, tabId: string, letters: string, printed?: (e: any) => void): string {
   const lines = header(snap, tabId);
   lines.push('');
   let size = lines.join('\n').length;
@@ -110,6 +112,7 @@ export function formatListing(snap: any, tabId: string, letters: string): string
     const line = elementLine(e, snap.viewport, letters, snap.layers);
     if (size + line.length > MAX_LISTING_CHARS) break;
     lines.push(line);
+    printed?.(e);
     size += line.length + 1;
     shown++;
   }
@@ -123,9 +126,9 @@ export function formatListing(snap: any, tabId: string, letters: string): string
 
 // What changed since the listing named by `since`, or the full listing when
 // the delta does not apply (a new document, or the baseline was too old).
-export function formatChange(snap: any, tabId: string, letters: string): string {
+export function formatChange(snap: any, tabId: string, letters: string, printed?: (e: any) => void): string {
   const d = snap.delta;
-  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters);
+  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters, printed);
   const id = (label: string | undefined) => idOf(label, letters) ?? '(no id)';
   const byId = new Map<number, any>(snap.elements.map((e: any) => [e.agentNodeId, e]));
   const skip = redundantLabels(snap.elements);
@@ -140,6 +143,7 @@ export function formatChange(snap: any, tabId: string, letters: string): string 
   for (const a of d.added ?? []) {
     const e = byId.get(a.agentNodeId);
     if (e && !skip.has(e.agentNodeId)) {
+      printed?.(e);
       lines.push(`+ ${elementLine(e, snap.viewport, letters, snap.layers)}${a.why === 'new' ? '' : ` (${a.why.replace(/_/g, ' ')})`}`);
     }
   }
@@ -155,6 +159,7 @@ export function formatChange(snap: any, tabId: string, letters: string): string 
   }
   for (const c of d.changed ?? []) {
     const e = byId.get(c.agentNodeId);
+    if (e) printed?.(e);
     const who = e ? `${id(e.label)} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ''}` : 'an element not listed';
     if (c.what === 'state') {
       const from = new Set<string>(c.fromStates ?? []);

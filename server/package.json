@@ -1,7 +1,7 @@
 {
   "name": "chromaphore-mcp-server",
   "license": "Apache-2.0",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "Source of the chromaphore plugin's MCP server; bundled into plugin/dist/server.mjs.",

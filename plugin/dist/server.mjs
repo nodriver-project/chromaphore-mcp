@@ -36993,17 +36993,51 @@ var Tab = class {
   lastListingId = null;
   // The letters of the page the tab's last listing showed (Browser.lettersFor).
   letters = "a";
+  // When the main frame's latest cross-document load started, while it has
+  // neither committed nor failed; 0 for none (navigationPending).
+  navigationStartedAt = 0;
+  // Actions whose load has been told to have ended: a late event can be
+  // handled before the answer that told its start (the answer's
+  // continuation runs after the pipe's read is dispatched).
+  loadEnded = /* @__PURE__ */ new Set();
   dialog = null;
   notices = [];
   closed = false;
   dialogWaiters = [];
-  send(method, params = {}, timeoutMs) {
-    return this.browser.conn.send(method, params, this.sessionId, timeoutMs);
+  async send(method, params = {}, timeoutMs) {
+    const r = await this.browser.conn.send(method, params, this.sessionId, timeoutMs);
+    const outcome = r?.actionOutcome;
+    for (const ev of outcome?.events ?? []) this.noteEvent(ev, outcome.actionId);
+    return r;
   }
   takeNotices() {
     const n = this.notices;
     this.notices = [];
     return n;
+  }
+  // Follows the main frame's cross-document loads in what the browser says an
+  // action led to (Input.actionOutcome's event, an action's answer).
+  noteEvent(ev, actionId) {
+    if (ev?.kind !== "navigation" || ev.mainFrame === false || ev.sameDocument) return;
+    if (ev.state === "started") {
+      if (actionId === void 0 || !this.loadEnded.has(actionId)) this.navigationStartedAt = Date.now();
+    } else if (ev.state === "committed" || ev.state === "failed") {
+      this.navigationStartedAt = 0;
+      if (actionId !== void 0) {
+        this.loadEnded.add(actionId);
+        if (this.loadEnded.size > 64) this.loadEnded.delete(this.loadEnded.values().next().value);
+      }
+    }
+  }
+  // The agent's own navigation replaces a load an action started, whose end
+  // then never comes.
+  navigationReplaced() {
+    this.navigationStartedAt = 0;
+  }
+  // A load started and not yet landed: the ids listed will be gone when it
+  // does. One whose end was never told stops counting after 30 s.
+  navigationPending() {
+    return this.navigationStartedAt !== 0 && Date.now() - this.navigationStartedAt < 3e4;
   }
   dialogOpened(d) {
     this.dialog = d;
@@ -37192,7 +37226,7 @@ var Browser = class _Browser {
       while (letters === "s" || letters === "t");
       if (!lettersByPage.has(this)) lettersByPage.set(this, /* @__PURE__ */ new Map());
       lettersByPage.get(this).set(`${targetId}/${documentId}`, letters);
-      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId });
+      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId, shown: /* @__PURE__ */ new Map() });
     }
     return letters;
   }
@@ -37276,6 +37310,7 @@ var Browser = class _Browser {
         );
         return;
       case "Input.actionOutcome":
+        tab.noteEvent(p.event, p.actionId);
         tab.notices.push(`Later, from an earlier action: ${describeEvent(p.event)}.`);
         return;
     }
@@ -37441,7 +37476,7 @@ function redundantLabels(elements) {
     elements.filter((e) => e.role === "LabelText" && !e.interactive && names.has(clip(e.name ?? e.reads))).map((e) => e.agentNodeId)
   );
 }
-function formatListing(snap, tabId, letters) {
+function formatListing(snap, tabId, letters, printed) {
   const lines = header(snap, tabId);
   lines.push("");
   let size = lines.join("\n").length;
@@ -37452,6 +37487,7 @@ function formatListing(snap, tabId, letters) {
     const line = elementLine(e, snap.viewport, letters, snap.layers);
     if (size + line.length > MAX_LISTING_CHARS) break;
     lines.push(line);
+    printed?.(e);
     size += line.length + 1;
     shown++;
   }
@@ -37462,9 +37498,9 @@ function formatListing(snap, tabId, letters) {
   lines.push(...heardLines(snap));
   return lines.join("\n");
 }
-function formatChange(snap, tabId, letters) {
+function formatChange(snap, tabId, letters, printed) {
   const d = snap.delta;
-  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters);
+  if (!d || snap.baseline === false) return formatListing(snap, tabId, letters, printed);
   const id2 = (label) => idOf(label, letters) ?? "(no id)";
   const byId = new Map(snap.elements.map((e) => [e.agentNodeId, e]));
   const skip = redundantLabels(snap.elements);
@@ -37479,6 +37515,7 @@ function formatChange(snap, tabId, letters) {
   for (const a of d.added ?? []) {
     const e = byId.get(a.agentNodeId);
     if (e && !skip.has(e.agentNodeId)) {
+      printed?.(e);
       lines.push(`+ ${elementLine(e, snap.viewport, letters, snap.layers)}${a.why === "new" ? "" : ` (${a.why.replace(/_/g, " ")})`}`);
     }
   }
@@ -37492,6 +37529,7 @@ function formatChange(snap, tabId, letters) {
   }
   for (const c of d.changed ?? []) {
     const e = byId.get(c.agentNodeId);
+    if (e) printed?.(e);
     const who = e ? `${id2(e.label)} ${roleWord(e)}${e.name ? ` ${JSON.stringify(clip(e.name, 60))}` : ""}` : "an element not listed";
     if (c.what === "state") {
       const from = new Set(c.fromStates ?? []);
@@ -37572,6 +37610,10 @@ async function capture(tab, params) {
 function remember(tab, snap) {
   tab.lastListingId = snap.listingId;
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
+  const shown = pageOf(tab.letters)?.shown;
+  for (const e of snap.elements ?? []) {
+    if (shown && e.label && shown.has(e.label)) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
+  }
   tab.viewport = { width: snap.viewport.width, height: snap.viewport.height };
   return keepImage(snap.screenshot, tab.letters);
 }
@@ -37600,7 +37642,7 @@ async function afterAction(tab, said, outcome) {
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id2 = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), "", formatChange(r.snap, tab.id, tab.letters));
+  lines.push(...noticesOf(tab), "", formatChange(r.snap, tab.id, tab.letters, shownOn(tab)));
   return withSnapshotId(lines.join("\n"), id2);
 }
 async function observe(tab, offscreen, scope) {
@@ -37608,7 +37650,7 @@ async function observe(tab, offscreen, scope) {
   await settle2(tab);
   const snap = await capture(tab, { offscreenMode: offscreen ?? "summary", scope: scope ?? "on" });
   const id2 = remember(tab, snap);
-  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters)].join("\n"), id2);
+  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters, shownOn(tab))].join("\n"), id2);
 }
 async function viewCentre(tab) {
   if (!tab.viewport) {
@@ -37643,19 +37685,101 @@ async function resolve(tab, id2) {
       tab.browser.hasTarget(page.targetId) ? `${id2} is an element of tab ${tab.browser.tabIdFor(page.targetId)}, not of the selected tab ${tab.id}: tab_select it first, or use an id from this tab's listing.` : `${id2} is from a tab closed since. Call observe for current ids.`
     );
   }
-  const life = await onActivePage(() => tab.send("Page.agentNodesAlive", { labels: [`a${m[2]}`] }));
+  if (tab.navigationPending()) {
+    throw new ToolError(
+      `${id2} is of a page that is loading a new document: its ids will be gone when it lands. Call observe once it has.`
+    );
+  }
+  const label = `a${m[2]}`;
+  const life = await onActivePage(() => tab.send("Page.agentNodesAlive", { labels: [label], layers: true }));
   if (life.documentId !== page.documentId) {
     throw new ToolError(
       `${id2} is from a page this tab has since left (a navigation or a reload replaced it). Use the ids of the latest listing, or call observe.`
     );
   }
   const node0 = life.nodes?.[0];
-  if (node0?.state === "elsewhere") {
-    throw new ToolError(`${id2} is not an element of this page. Call observe for current ids.`);
-  }
+  const refused = node0 ? idRefusal(id2, node0, page.shown, label) : null;
+  if (refused) throw new ToolError(refused);
   const node2 = node0?.agentNodeId === void 0 || node0.state === "gone" ? { found: false } : await onActivePage(() => tab.send("Page.resolveAgentNode", { agentNodeId: node0.agentNodeId }));
   if (!node2.found) throw new ToolError(`${id2} is no longer on the page or not laid out. Call observe for current ids.`);
   return { backendNodeId: node2.backendNodeId, frameId: node2.localRootFrameId, label: id2 };
+}
+function shownOn(tab) {
+  const shown = pageOf(tab.letters)?.shown;
+  return (e) => {
+    if (shown && e.label) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
+  };
+}
+function idRefusal(id2, life, shown, label) {
+  const seen = shown.get(label);
+  const what = described(seen ?? life);
+  switch (life.state) {
+    case "elsewhere":
+      return `${id2} is not an element of this page. Call observe for current ids.`;
+    case "gone":
+      return `${id2} (${what}) is no longer on the page. Call observe for current ids.`;
+    case "alive":
+      break;
+    default:
+      return null;
+  }
+  const placement = life.placement ?? "";
+  if (placement === "dropped" && !seen) {
+    return `${id2} is not an id you were shown: it names something off screen that the listing left out. Use an id from a listing, or observe with offscreen "full".`;
+  }
+  if (placement === "behind") {
+    const layer = layerName(life.behind);
+    if (life.behindOpen === false) {
+      return `${id2} (${what}) was behind ${layer} when the page was last listed, and that has closed since. Call observe, then retry.`;
+    }
+    const escape2 = life.behind?.kind === "listbox" || life.behind?.kind === "menu";
+    return `${id2} (${what}) is behind ${layer} now, so nothing can reach it. ${escape2 ? "Close it first - Escape usually does - or pick from it." : "Close that first, or act on what it shows."}`;
+  }
+  if (placement === "unlisted") {
+    return `${id2} (${what}) is on the page but no longer listed: hidden, or no longer something to act on. Call observe.`;
+  }
+  if (seen && life.reads && !stillReads(seen, life.reads)) {
+    const was = seen.reads ? described({ role: seen.role, name: headOf(seen.reads) }) : what;
+    shown.set(label, { role: life.role, name: headOf(life.reads), reads: life.reads });
+    return `${id2} was ${was} when you saw it; it now reads "${headOf(life.reads)}". Call observe if the page has moved on, or act on what it is now.`;
+  }
+  return null;
+}
+function described(e) {
+  const role = e.role === "StaticText" || e.role === "generic" ? "text" : e.role === "LabelText" ? "label" : e.role ?? "element";
+  const name = e.name || (e.reads ? headOf(e.reads) : "");
+  return name ? `${role} "${clip(name, 60)}"` : role;
+}
+function layerName(layer) {
+  const kind = layer?.kind || "layer";
+  if (!layer?.name) return `${/^[aeiou]/i.test(kind) ? "an" : "a"} ${kind}`;
+  return `${kind} "${clip(layer.name, 60)}"`;
+}
+function headOf(reads) {
+  const nl = reads.indexOf("\n");
+  const label = (nl >= 0 ? reads.slice(0, nl) : reads).trim();
+  const text2 = nl >= 0 ? reads.slice(nl + 1).trim() : "";
+  const head = label || text2;
+  return head.length > 60 ? head.slice(0, 59) + "\u2026" : head;
+}
+var squash = (s) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+function stillReads(seen, now) {
+  if (!seen.reads) return readsAsNamed(seen, now);
+  const was = squash(headOf(seen.reads));
+  const is = squash(headOf(now));
+  return !was || !is || was === is || is.startsWith(was + " ") || was.startsWith(is + " ");
+}
+function readsAsNamed(seen, now) {
+  let name = squash(seen.name);
+  if (!name) return true;
+  const cut = name.indexOf("\u2026");
+  if (cut > 0) name = name.slice(0, cut).trim();
+  if (name.length > 40) name = name.slice(0, 40);
+  const nl = now.indexOf("\n");
+  const label = squash(nl >= 0 ? now.slice(0, nl) : now);
+  const text2 = nl >= 0 ? squash(now.slice(nl + 1)) : "";
+  if (!label && !text2) return true;
+  return label.includes(name) || text2.includes(name) || !!label && name.includes(label);
 }
 function assertNoDialog(tab) {
   if (tab.dialog) {
@@ -37865,26 +37989,31 @@ function withScheme(url2) {
 }
 async function navigate(tab, opts) {
   assertNoDialog(tab);
+  tab.navigationReplaced();
   const { armId } = await onActivePage(() => tab.send("Page.agentSettleArm"));
   let said;
-  if (opts.url) {
-    const url2 = withScheme(opts.url);
-    const r2 = await onActivePage(() => tab.send("Page.navigate", { url: url2 }));
-    if (r2.errorText) return `Could not load ${url2}: ${r2.errorText}.`;
-    said = `Went to ${url2}.`;
-  } else if (opts.action === "reload") {
-    await onActivePage(() => tab.send("Page.reload"));
-    said = "Reloaded.";
-  } else {
-    const h = await onActivePage(() => tab.send("Page.getNavigationHistory"));
-    const back = opts.action === "back";
-    const entry = h.entries[h.currentIndex + (back ? -1 : 1)];
-    if (!entry) return `There is no page to go ${back ? "back" : "forward"} to.`;
-    const r2 = await onActivePage(
-      () => tab.send("Page.agentNavigateToHistoryEntry", { entryId: entry.id, timeoutMs: 15e3 }, 3e4)
-    );
-    if (r2.outcome !== "committed") return `Going ${back ? "back" : "forward"} ${r2.outcome} (${r2.url}).`;
-    said = `Went ${back ? "back" : "forward"} to ${r2.url}.`;
+  try {
+    if (opts.url) {
+      const url2 = withScheme(opts.url);
+      const r2 = await onActivePage(() => tab.send("Page.navigate", { url: url2 }));
+      if (r2.errorText) return `Could not load ${url2}: ${r2.errorText}.`;
+      said = `Went to ${url2}.`;
+    } else if (opts.action === "reload") {
+      await onActivePage(() => tab.send("Page.reload"));
+      said = "Reloaded.";
+    } else {
+      const h = await onActivePage(() => tab.send("Page.getNavigationHistory"));
+      const back = opts.action === "back";
+      const entry = h.entries[h.currentIndex + (back ? -1 : 1)];
+      if (!entry) return `There is no page to go ${back ? "back" : "forward"} to.`;
+      const r2 = await onActivePage(
+        () => tab.send("Page.agentNavigateToHistoryEntry", { entryId: entry.id, timeoutMs: 15e3 }, 3e4)
+      );
+      if (r2.outcome !== "committed") return `Going ${back ? "back" : "forward"} ${r2.outcome} (${r2.url}).`;
+      said = `Went ${back ? "back" : "forward"} to ${r2.url}.`;
+    }
+  } finally {
+    tab.navigationReplaced();
   }
   const lines = [said];
   const r = await tab.untilDialog(
@@ -37894,7 +38023,7 @@ async function navigate(tab, opts) {
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id2 = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), "", formatListing(r.snap, tab.id, tab.letters));
+  lines.push(...noticesOf(tab), "", formatListing(r.snap, tab.id, tab.letters, shownOn(tab)));
   return withSnapshotId(lines.join("\n"), id2);
 }
 async function answerDialog(tab, accept, text2) {
@@ -38240,7 +38369,7 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.2.1";
+var VERSION = "0.2.2";
 var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).

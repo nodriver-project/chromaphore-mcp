@@ -72,6 +72,13 @@ export class Tab {
   lastListingId: string | null = null;
   // The letters of the page the tab's last listing showed (Browser.lettersFor).
   letters = 'a';
+  // When the main frame's latest cross-document load started, while it has
+  // neither committed nor failed; 0 for none (navigationPending).
+  private navigationStartedAt = 0;
+  // Actions whose load has been told to have ended: a late event can be
+  // handled before the answer that told its start (the answer's
+  // continuation runs after the pipe's read is dispatched).
+  private readonly loadEnded = new Set<number>();
   dialog: Dialog | null = null;
   notices: string[] = [];
   closed = false;
@@ -84,14 +91,46 @@ export class Tab {
     readonly sessionId: string,
   ) {}
 
-  send<T = any>(method: string, params: object = {}, timeoutMs?: number): Promise<T> {
-    return this.browser.conn.send<T>(method, params, this.sessionId, timeoutMs);
+  async send<T = any>(method: string, params: object = {}, timeoutMs?: number): Promise<T> {
+    const r: any = await this.browser.conn.send<T>(method, params, this.sessionId, timeoutMs);
+    // What an input action led to, from every command that answers with it,
+    // a press of several or the select-all before typing included.
+    const outcome = r?.actionOutcome;
+    for (const ev of outcome?.events ?? []) this.noteEvent(ev, outcome.actionId);
+    return r;
   }
 
   takeNotices(): string[] {
     const n = this.notices;
     this.notices = [];
     return n;
+  }
+
+  // Follows the main frame's cross-document loads in what the browser says an
+  // action led to (Input.actionOutcome's event, an action's answer).
+  noteEvent(ev: any, actionId?: number): void {
+    if (ev?.kind !== 'navigation' || ev.mainFrame === false || ev.sameDocument) return;
+    if (ev.state === 'started') {
+      if (actionId === undefined || !this.loadEnded.has(actionId)) this.navigationStartedAt = Date.now();
+    } else if (ev.state === 'committed' || ev.state === 'failed') {
+      this.navigationStartedAt = 0;
+      if (actionId !== undefined) {
+        this.loadEnded.add(actionId);
+        if (this.loadEnded.size > 64) this.loadEnded.delete(this.loadEnded.values().next().value!);
+      }
+    }
+  }
+
+  // The agent's own navigation replaces a load an action started, whose end
+  // then never comes.
+  navigationReplaced(): void {
+    this.navigationStartedAt = 0;
+  }
+
+  // A load started and not yet landed: the ids listed will be gone when it
+  // does. One whose end was never told stops counting after 30 s.
+  navigationPending(): boolean {
+    return this.navigationStartedAt !== 0 && Date.now() - this.navigationStartedAt < 30_000;
   }
 
   dialogOpened(d: Dialog): void {
@@ -290,7 +329,7 @@ export class Browser {
       while (letters === 's' || letters === 't');
       if (!lettersByPage.has(this)) lettersByPage.set(this, new Map());
       lettersByPage.get(this)!.set(`${targetId}/${documentId}`, letters);
-      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId });
+      pagesByLetters.set(letters, { browser: this.serial, targetId, documentId, shown: new Map() });
     }
     return letters;
   }
@@ -380,6 +419,7 @@ export class Browser {
         );
         return;
       case 'Input.actionOutcome':
+        tab.noteEvent(p.event, p.actionId);
         tab.notices.push(`Later, from an earlier action: ${describeEvent(p.event)}.`);
         return;
     }
@@ -394,11 +434,24 @@ export class Browser {
 // browser closed since never names a page of the next one; s and t are
 // skipped, being the letters of snapshot and tab ids.
 const lettersByPage = new WeakMap<Browser, Map<string, string>>();
-const pagesByLetters = new Map<string, { browser: number; targetId: string; documentId: string }>();
+// What a listing printed of an element, by the browser's label (a12): what the
+// agent was shown, for the checks an id gets before it is acted on.
+export interface Shown {
+  role?: string;
+  name?: string;
+  reads?: string;
+}
+interface PageIds {
+  browser: number;
+  targetId: string;
+  documentId: string;
+  shown: Map<string, Shown>;
+}
+const pagesByLetters = new Map<string, PageIds>();
 let pagesCounted = 0;
 let browsersOpened = 0;
 
-export function pageOf(letters: string): { browser: number; targetId: string; documentId: string } | null {
+export function pageOf(letters: string): PageIds | null {
   return pagesByLetters.get(letters) ?? null;
 }
 

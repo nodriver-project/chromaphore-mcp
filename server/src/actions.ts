@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomInt } from 'node:crypto';
 import { CdpError } from './cdp.js';
-import { ToolError, describeEvent, onActivePage, pageOf, type Tab } from './browser.js';
-import { formatChange, formatListing, settleLine } from './listing.js';
+import { ToolError, describeEvent, onActivePage, pageOf, type Shown, type Tab } from './browser.js';
+import { clip, formatChange, formatListing, settleLine } from './listing.js';
 
 // Screenshots kept for `view`, newest last.
 const images = new Map<string, { data: string; mimeType: string; letters: string }>();
@@ -54,6 +54,14 @@ async function capture(tab: Tab, params: object): Promise<any> {
 function remember(tab: Tab, snap: any): string | null {
   tab.lastListingId = snap.listingId;
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
+  // An element shown before is kept as it is now, printed or not, as
+  // NoDriver's ListingMemory.given keeps it: what a reply leaves out of a
+  // delta (a title that changed with the name the same) is not a change the
+  // agent missed.
+  const shown = pageOf(tab.letters)?.shown;
+  for (const e of snap.elements ?? []) {
+    if (shown && e.label && shown.has(e.label)) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
+  }
   tab.viewport = { width: snap.viewport.width, height: snap.viewport.height };
   return keepImage(snap.screenshot, tab.letters);
 }
@@ -85,7 +93,7 @@ async function afterAction(tab: Tab, said: string[], outcome?: any): Promise<str
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), '', formatChange(r.snap, tab.id, tab.letters));
+  lines.push(...noticesOf(tab), '', formatChange(r.snap, tab.id, tab.letters, shownOn(tab)));
   return withSnapshotId(lines.join('\n'), id);
 }
 
@@ -94,7 +102,7 @@ export async function observe(tab: Tab, offscreen?: string, scope?: string): Pro
   await settle(tab);
   const snap = await capture(tab, { offscreenMode: offscreen ?? 'summary', scope: scope ?? 'on' });
   const id = remember(tab, snap);
-  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters)].join('\n'), id);
+  return withSnapshotId([...noticesOf(tab), formatListing(snap, tab.id, tab.letters, shownOn(tab))].join('\n'), id);
 }
 
 // --- the pointer --------------------------------------------------------
@@ -153,22 +161,127 @@ async function resolve(tab: Tab, id: string): Promise<Target> {
         : `${id} is from a tab closed since. Call observe for current ids.`,
     );
   }
-  const life = await onActivePage(() => tab.send('Page.agentNodesAlive', { labels: [`a${m[2]}`] }));
+  // A load under way: the renderer would hold the lookup until it lands, and
+  // the ids are of the page that is leaving.
+  if (tab.navigationPending()) {
+    throw new ToolError(
+      `${id} is of a page that is loading a new document: its ids will be gone when it lands. Call observe once it has.`,
+    );
+  }
+  const label = `a${m[2]}`;
+  const life = await onActivePage(() => tab.send('Page.agentNodesAlive', { labels: [label], layers: true }));
   if (life.documentId !== page.documentId) {
     throw new ToolError(
       `${id} is from a page this tab has since left (a navigation or a reload replaced it). Use the ids of the latest listing, or call observe.`,
     );
   }
   const node0 = life.nodes?.[0];
-  if (node0?.state === 'elsewhere') {
-    throw new ToolError(`${id} is not an element of this page. Call observe for current ids.`);
-  }
+  const refused = node0 ? idRefusal(id, node0, page.shown, label) : null;
+  if (refused) throw new ToolError(refused);
   const node =
     node0?.agentNodeId === undefined || node0.state === 'gone'
       ? { found: false }
       : await onActivePage(() => tab.send('Page.resolveAgentNode', { agentNodeId: node0.agentNodeId }));
   if (!node.found) throw new ToolError(`${id} is no longer on the page or not laid out. Call observe for current ids.`);
   return { backendNodeId: node.backendNodeId, frameId: node.localRootFrameId, label: id };
+}
+
+// What a listing printed is kept as what the agent was shown on that page.
+function shownOn(tab: Tab): (e: any) => void {
+  const shown = pageOf(tab.letters)?.shown;
+  return (e) => {
+    if (shown && e.label) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
+  };
+}
+
+// Why an element named by an id is not to be acted on now, or null. The
+// same checks as NoDriver's (bridge/session/IdCheck.java): an element gone,
+// one off screen the agent was never shown, one behind a layer open on top or
+// that was behind one that has closed, one no longer listed, and one that no
+// longer reads as it did when the agent saw it. An element whose frame did
+// not answer is let through: the action checks what it reaches.
+function idRefusal(id: string, life: any, shown: Map<string, Shown>, label: string): string | null {
+  const seen = shown.get(label);
+  const what = described(seen ?? life);
+  switch (life.state) {
+    case 'elsewhere':
+      return `${id} is not an element of this page. Call observe for current ids.`;
+    case 'gone':
+      return `${id} (${what}) is no longer on the page. Call observe for current ids.`;
+    case 'alive':
+      break;
+    default:
+      return null;
+  }
+  const placement = life.placement ?? '';
+  if (placement === 'dropped' && !seen) {
+    return `${id} is not an id you were shown: it names something off screen that the listing left out. Use an id from a listing, or observe with offscreen "full".`;
+  }
+  if (placement === 'behind') {
+    const layer = layerName(life.behind);
+    if (life.behindOpen === false) {
+      return `${id} (${what}) was behind ${layer} when the page was last listed, and that has closed since. Call observe, then retry.`;
+    }
+    const escape = life.behind?.kind === 'listbox' || life.behind?.kind === 'menu';
+    return `${id} (${what}) is behind ${layer} now, so nothing can reach it. ${escape ? 'Close it first - Escape usually does - or pick from it.' : 'Close that first, or act on what it shows.'}`;
+  }
+  if (placement === 'unlisted') {
+    return `${id} (${what}) is on the page but no longer listed: hidden, or no longer something to act on. Call observe.`;
+  }
+  if (seen && life.reads && !stillReads(seen, life.reads)) {
+    const was = seen.reads ? described({ role: seen.role, name: headOf(seen.reads) }) : what;
+    // Told now: a retry acts on what it reads as.
+    shown.set(label, { role: life.role, name: headOf(life.reads), reads: life.reads });
+    return `${id} was ${was} when you saw it; it now reads "${headOf(life.reads)}". Call observe if the page has moved on, or act on what it is now.`;
+  }
+  return null;
+}
+
+function described(e: { role?: string; name?: string; reads?: string }): string {
+  const role = e.role === 'StaticText' || e.role === 'generic' ? 'text' : e.role === 'LabelText' ? 'label' : e.role ?? 'element';
+  const name = e.name || (e.reads ? headOf(e.reads) : '');
+  return name ? `${role} "${clip(name, 60)}"` : role;
+}
+
+function layerName(layer: any): string {
+  const kind = layer?.kind || 'layer';
+  if (!layer?.name) return `${/^[aeiou]/i.test(kind) ? 'an' : 'a'} ${kind}`;
+  return `${kind} "${clip(layer.name, 60)}"`;
+}
+
+// What an element reads as (its label, a newline, then its text): the head is
+// its label, else its text.
+function headOf(reads: string): string {
+  const nl = reads.indexOf('\n');
+  const label = (nl >= 0 ? reads.slice(0, nl) : reads).trim();
+  const text = nl >= 0 ? reads.slice(nl + 1).trim() : '';
+  const head = label || text;
+  return head.length > 60 ? head.slice(0, 59) + '…' : head;
+}
+
+const squash = (s: string | undefined) => (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Whether it still reads as listed, by NoDriver's rule: the same head, or one
+// that only grew or shrank by whole words; an element read as nothing, then
+// or now, gives nothing to judge by.
+function stillReads(seen: Shown, now: string): boolean {
+  if (!seen.reads) return readsAsNamed(seen, now);
+  const was = squash(headOf(seen.reads));
+  const is = squash(headOf(now));
+  return !was || !is || was === is || is.startsWith(was + ' ') || was.startsWith(is + ' ');
+}
+
+function readsAsNamed(seen: Shown, now: string): boolean {
+  let name = squash(seen.name);
+  if (!name) return true;
+  const cut = name.indexOf('…');
+  if (cut > 0) name = name.slice(0, cut).trim();
+  if (name.length > 40) name = name.slice(0, 40);
+  const nl = now.indexOf('\n');
+  const label = squash(nl >= 0 ? now.slice(0, nl) : now);
+  const text = nl >= 0 ? squash(now.slice(nl + 1)) : '';
+  if (!label && !text) return true;
+  return label.includes(name) || text.includes(name) || (!!label && name.includes(label));
 }
 
 function assertNoDialog(tab: Tab): void {
@@ -411,26 +524,31 @@ export function withScheme(url: string): string {
 
 export async function navigate(tab: Tab, opts: { url?: string; action?: string }): Promise<string> {
   assertNoDialog(tab);
+  tab.navigationReplaced();
   const { armId } = await onActivePage(() => tab.send('Page.agentSettleArm'));
   let said: string;
-  if (opts.url) {
-    const url = withScheme(opts.url);
-    const r = await onActivePage(() => tab.send('Page.navigate', { url }));
-    if (r.errorText) return `Could not load ${url}: ${r.errorText}.`;
-    said = `Went to ${url}.`;
-  } else if (opts.action === 'reload') {
-    await onActivePage(() => tab.send('Page.reload'));
-    said = 'Reloaded.';
-  } else {
-    const h = await onActivePage(() => tab.send('Page.getNavigationHistory'));
-    const back = opts.action === 'back';
-    const entry = h.entries[h.currentIndex + (back ? -1 : 1)];
-    if (!entry) return `There is no page to go ${back ? 'back' : 'forward'} to.`;
-    const r = await onActivePage(() =>
-      tab.send('Page.agentNavigateToHistoryEntry', { entryId: entry.id, timeoutMs: 15_000 }, 30_000),
-    );
-    if (r.outcome !== 'committed') return `Going ${back ? 'back' : 'forward'} ${r.outcome} (${r.url}).`;
-    said = `Went ${back ? 'back' : 'forward'} to ${r.url}.`;
+  try {
+    if (opts.url) {
+      const url = withScheme(opts.url);
+      const r = await onActivePage(() => tab.send('Page.navigate', { url }));
+      if (r.errorText) return `Could not load ${url}: ${r.errorText}.`;
+      said = `Went to ${url}.`;
+    } else if (opts.action === 'reload') {
+      await onActivePage(() => tab.send('Page.reload'));
+      said = 'Reloaded.';
+    } else {
+      const h = await onActivePage(() => tab.send('Page.getNavigationHistory'));
+      const back = opts.action === 'back';
+      const entry = h.entries[h.currentIndex + (back ? -1 : 1)];
+      if (!entry) return `There is no page to go ${back ? 'back' : 'forward'} to.`;
+      const r = await onActivePage(() =>
+        tab.send('Page.agentNavigateToHistoryEntry', { entryId: entry.id, timeoutMs: 15_000 }, 30_000),
+      );
+      if (r.outcome !== 'committed') return `Going ${back ? 'back' : 'forward'} ${r.outcome} (${r.url}).`;
+      said = `Went ${back ? 'back' : 'forward'} to ${r.url}.`;
+    }
+  } finally {
+    tab.navigationReplaced();
   }
   const lines = [said];
   const r = await tab.untilDialog(
@@ -440,7 +558,7 @@ export async function navigate(tab: Tab, opts: { url?: string; action?: string }
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), '', formatListing(r.snap, tab.id, tab.letters));
+  lines.push(...noticesOf(tab), '', formatListing(r.snap, tab.id, tab.letters, shownOn(tab)));
   return withSnapshotId(lines.join('\n'), id);
 }
 
