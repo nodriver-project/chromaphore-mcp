@@ -30,6 +30,9 @@ await new Promise((r) => site.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${site.address().port}`;
 
 const env = { ...process.env };
+// Not the session this test runs in: its page count would carry over
+// between runs (browser.ts, nextPageNumber).
+delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
 const client = new Client({ name: 'second-document-test', version: '0' });
 await client.connect(new StdioClientTransport({ command: process.execPath, args: [serverPath], env, stderr: 'inherit' }));

@@ -12,6 +12,9 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TEMP = path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Chromaphore', 'temp');
 const env = { ...process.env };
+// Not the session this test runs in: its page count would carry over
+// between runs (browser.ts, nextPageNumber).
+delete env.CLAUDE_CODE_SESSION_ID;
 if (process.argv[2]) env.CHROMAPHORE_BROWSER = process.argv[2];
 else delete env.CHROMAPHORE_BROWSER;
 
@@ -93,7 +96,8 @@ await call(client, 'browser_close');
 await client.close();
 await sleep(3000);
 check(!text.includes('temporary') && fs.existsSync(profile), `"new" profile kept: ${profile}`);
-fs.rmSync(profile, { recursive: true, force: true });
+// The browser's helper processes can hold a file a little longer.
+fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
 
 fs.rmSync(fresh, { recursive: true, force: true });
 console.log(failures ? `${failures} FAILED` : 'all passed');

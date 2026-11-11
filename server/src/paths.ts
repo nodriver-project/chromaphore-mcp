@@ -15,6 +15,12 @@ export const CURRENT_FILE = path.join(DATA_ROOT, 'current.json');
 // Replaced releases whose folder was in use when browser_install replaced
 // them, deleted at a later start.
 const PENDING_FILE = path.join(DATA_ROOT, 'remove.json');
+// Each Claude Code session's page count for element ids (browser.ts,
+// nextPageNumber), one file per session: CLAUDE_CODE_SESSION_ID, which
+// Claude Code gives the servers it starts. None without a session id.
+export const IDS_DIR = path.join(DATA_ROOT, 'ids');
+const SESSION = (process.env.CLAUDE_CODE_SESSION_ID ?? '').replace(/[^\w-]/g, '');
+export const COUNT_FILE = SESSION ? path.join(IDS_DIR, `${SESSION}.json`) : null;
 
 // The same layout under the plugin's name before 0.2.0, chromeleon.
 const OLD_ROOT = path.join(LOCAL, 'Chromeleon');
@@ -264,6 +270,28 @@ export function movedProfile(profile: string): string {
   if (fs.existsSync(profile) || !samePath(path.dirname(profile), OLD_PROFILES_DIR)) return profile;
   const moved = path.join(PROFILES_DIR, path.basename(profile));
   return fs.existsSync(moved) ? moved : profile;
+}
+
+// The page counts of sessions untouched for 30 days, as long as Claude Code
+// keeps a session's transcript (cleanupPeriodDays); never this server's own.
+// Another session's server may delete it, after which this one carries on
+// from its own count.
+export function sweepPageCounts(): void {
+  let names: string[];
+  try {
+    names = fs.readdirSync(IDS_DIR);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file = path.join(IDS_DIR, name);
+    if (COUNT_FILE && samePath(file, COUNT_FILE)) continue;
+    try {
+      if (Date.now() - fs.statSync(file).mtimeMs > 30 * 24 * 3_600_000) fs.rmSync(file, { force: true });
+    } catch {
+      // Gone already, or held: the next start tries again.
+    }
+  }
 }
 
 // Removes the old folder's empty parts, and the folder once it is empty.

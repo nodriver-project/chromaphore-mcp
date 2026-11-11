@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { CdpError, Connection, type CdpEvent } from './cdp.js';
 import {
   browserExe,
+  COUNT_FILE,
+  IDS_DIR,
   movedProfile,
   newProfileDir,
   OLD_TEMP_PROFILES_DIR,
@@ -325,8 +327,14 @@ export class Browser {
   lettersFor(targetId: string, documentId: string): string {
     let letters = lettersByPage.get(this)?.get(`${targetId}/${documentId}`);
     if (!letters) {
-      do letters = toLetters(pagesCounted++);
+      do letters = toLetters(nextPageNumber());
       while (letters === 's' || letters === 't');
+      const trouble = takeCountTrouble();
+      if (trouble) {
+        this.notices.push(
+          `The plugin could not keep its count of page ids (${trouble}), so an id given before the plugin last restarted could name a page now. Use only ids from listings given since then.`,
+        );
+      }
       if (!lettersByPage.has(this)) lettersByPage.set(this, new Map());
       lettersByPage.get(this)!.set(`${targetId}/${documentId}`, letters);
       pagesByLetters.set(letters, { browser: this.serial, targetId, documentId, shown: new Map() });
@@ -430,9 +438,9 @@ export class Browser {
 // the ids it lists: a12 on the first, b12 on the next, and so on. The
 // browser's labels start again at a1 in every document, so an id without its
 // page would name another element once the tab moved on (actions.ts,
-// resolve). The count is the server's, not one browser's, so an id from a
-// browser closed since never names a page of the next one; s and t are
-// skipped, being the letters of snapshot and tab ids.
+// resolve). The count is the session's (nextPageNumber), not one browser's,
+// so an id from a browser closed since never names a page of the next one;
+// s and t are skipped, being the letters of snapshot and tab ids.
 const lettersByPage = new WeakMap<Browser, Map<string, string>>();
 // What a listing printed of an element, by the browser's label (a12): what the
 // agent was shown, for the checks an id gets before it is acted on.
@@ -450,6 +458,94 @@ interface PageIds {
 const pagesByLetters = new Map<string, PageIds>();
 let pagesCounted = 0;
 let browsersOpened = 0;
+
+// The count goes on per Claude Code session (paths.ts, COUNT_FILE), saved
+// before the letters go out. A server restarted under a live session (an
+// /mcp reconnect, a crash) then goes on from its letters, and the ids the
+// model still holds from before are refused rather than naming the new
+// browser's pages. Without a session id (a test, another client) the count
+// is this process's. NoDriver keeps its count per conversation the same way.
+//
+// The file is read and written under a lock, so two servers of one session
+// (an old one still closing during a reconnect) hand out different letters
+// while it holds, and replaced whole, so a crash mid-write never leaves it
+// empty. Known limit: two servers that find a lock a crash left (older than
+// 10 s) at the same moment can both take it.
+// Only a missing file means "none yet". A count that cannot be read or saved
+// does not stop the reply, which may come after an action that already ran:
+// the letters go on from this process's count, and the next reply says so
+// once (Browser.lettersFor).
+let countTrouble: string | null = null;
+let countTroubleTold = false;
+
+function takeCountTrouble(): string | null {
+  if (!countTrouble || countTroubleTold) return null;
+  countTroubleTold = true;
+  return countTrouble;
+}
+
+function nextPageNumber(): number {
+  if (!COUNT_FILE) return pagesCounted++;
+  const file = COUNT_FILE;
+  try {
+    return underLock(file, () => {
+      let saved = 0;
+      try {
+        const next = JSON.parse(fs.readFileSync(file, 'utf8')).next;
+        if (Number.isSafeInteger(next) && next > 0) saved = next;
+        else noteCountTrouble('the saved count was unreadable');
+      } catch (e) {
+        // Unreadable content is replaced below by what this process knows,
+        // so the file is right again for the session's later servers; a
+        // missing file is this session's first page.
+        if (e instanceof SyntaxError) noteCountTrouble('the saved count was unreadable');
+        else if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+      }
+      const n = Math.max(saved, pagesCounted);
+      const part = `${file}.${process.pid}.part`;
+      fs.writeFileSync(part, JSON.stringify({ next: n + 1 }));
+      fs.renameSync(part, file);
+      pagesCounted = n + 1;
+      return n;
+    });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    noteCountTrouble(code ? `its file could not be read or written: ${code}` : e instanceof Error ? e.message : String(e));
+    return pagesCounted++;
+  }
+}
+
+function noteCountTrouble(reason: string): void {
+  countTrouble ??= reason;
+}
+
+// Runs `fn` holding `<file>.lock`, made exclusively; a lock older than 10 s
+// was left by a process that died holding it.
+function underLock<T>(file: string, fn: () => T): T {
+  const lock = `${file}.lock`;
+  fs.mkdirSync(IDS_DIR, { recursive: true });
+  const until = Date.now() + 2000;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(lock, 'wx'));
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      try {
+        if (Date.now() - fs.statSync(lock).mtimeMs > 10_000) fs.rmSync(lock, { force: true });
+      } catch {
+        // Gone meanwhile: the next try takes it.
+      }
+      if (Date.now() > until) throw new Error("another server of this session held the count's lock");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(lock, { force: true });
+  }
+}
 
 export function pageOf(letters: string): PageIds | null {
   return pagesByLetters.get(letters) ?? null;

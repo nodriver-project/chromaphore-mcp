@@ -199,10 +199,23 @@ function unlabelled(c: any): string {
   const drop = (s: string) => s.replace(/^a\d+ "/, '"').replace(/^a\d+(?= \(|\)|$)/, 'a listed element');
   if (c.kind === 'mutation') return drop(what);
   if (c.kind !== 'animation') return what;
+  // The browser puts the label either right after the first " on " of its
+  // own words, or, when its words have none, as "(aN "name")" or "(aN)" at
+  // the end. A name may hold " on " ("Turn on fan", "Seat on a5") or
+  // " (a1)", so the parenthesised shape is tried first: the first " (aN ""
+  // with the words ending in "")", standing before any " on ", or a bare
+  // " (aN)" at the very end with no " on " at all. Else the label after the
+  // first " on ", when one follows it there. (NoDriver's AgentIds.unlabelled
+  // tries " on " first.)
   const on = what.indexOf(' on ');
-  if (on >= 0) return what.slice(0, on + 4) + drop(what.slice(on + 4));
-  const end = what.lastIndexOf(' (a');
-  return end >= 0 && /^ \(a\d+( "|\)$)/.test(what.slice(end)) ? what.slice(0, end + 2) + drop(what.slice(end + 2)) : what;
+  const named = / \(a\d+ "/.exec(what);
+  if (named && what.endsWith('")') && (on < 0 || named.index < on)) {
+    return what.slice(0, named.index + 2) + drop(what.slice(named.index + 2));
+  }
+  const bare = / \(a\d+\)$/.exec(what);
+  if (bare && on < 0) return what.slice(0, bare.index + 2) + drop(what.slice(bare.index + 2));
+  if (on >= 0 && /^a\d+(?= "| \(|$)/.test(what.slice(on + 4))) return what.slice(0, on + 4) + drop(what.slice(on + 4));
+  return what;
 }
 
 export function settleLine(report: any): string {

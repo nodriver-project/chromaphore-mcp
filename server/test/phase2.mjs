@@ -56,7 +56,7 @@ await client.connect(
   new StdioClientTransport({
     command: process.execPath,
     args: [path.resolve(here, '../../plugin/dist/server.mjs')],
-    env: { ...process.env, CHROMAPHORE_BROWSER: exe },
+    env: { ...process.env, CHROMAPHORE_BROWSER: exe, CLAUDE_CODE_SESSION_ID: '' },
     stderr: 'inherit',
   }),
 );

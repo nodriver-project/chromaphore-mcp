@@ -22,6 +22,9 @@ const NEW = path.join(process.env.LOCALAPPDATA, 'Chromaphore');
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const env = { ...process.env };
+// Not the session this test runs in: its page count would carry over
+// between runs (browser.ts, nextPageNumber).
+delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
 
 let failures = 0;

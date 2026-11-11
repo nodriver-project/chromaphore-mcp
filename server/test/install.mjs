@@ -8,6 +8,9 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const env = { ...process.env };
+// Not the session this test runs in: its page count would carry over
+// between runs (browser.ts, nextPageNumber).
+delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
 const client = new Client({ name: 'install-test', version: '0' });
 await client.connect(

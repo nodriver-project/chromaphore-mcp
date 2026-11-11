@@ -52,8 +52,8 @@ async function capture(tab: Tab, params: object): Promise<any> {
 }
 
 function remember(tab: Tab, snap: any): string | null {
-  tab.lastListingId = snap.listingId;
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
+  tab.lastListingId = snap.listingId;
   // An element shown before is kept as it is now, printed or not, as
   // NoDriver's ListingMemory.given keeps it: what a reply leaves out of a
   // delta (a title that changed with the name the same) is not a change the

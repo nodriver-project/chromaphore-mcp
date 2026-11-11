@@ -36767,6 +36767,9 @@ var TEMP_PROFILES_DIR = path.join(DATA_ROOT, "temp");
 var BROWSERS_DIR = path.join(DATA_ROOT, "browser");
 var CURRENT_FILE = path.join(DATA_ROOT, "current.json");
 var PENDING_FILE = path.join(DATA_ROOT, "remove.json");
+var IDS_DIR = path.join(DATA_ROOT, "ids");
+var SESSION = (process.env.CLAUDE_CODE_SESSION_ID ?? "").replace(/[^\w-]/g, "");
+var COUNT_FILE = SESSION ? path.join(IDS_DIR, `${SESSION}.json`) : null;
 var OLD_ROOT = path.join(LOCAL, "Chromeleon");
 var OLD_PROFILES_DIR = path.join(OLD_ROOT, "profiles");
 var OLD_BROWSERS_DIR = path.join(OLD_ROOT, "browser");
@@ -36938,6 +36941,22 @@ function movedProfile(profile) {
   if (fs.existsSync(profile) || !samePath(path.dirname(profile), OLD_PROFILES_DIR)) return profile;
   const moved = path.join(PROFILES_DIR, path.basename(profile));
   return fs.existsSync(moved) ? moved : profile;
+}
+function sweepPageCounts() {
+  let names;
+  try {
+    names = fs.readdirSync(IDS_DIR);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const file2 = path.join(IDS_DIR, name);
+    if (COUNT_FILE && samePath(file2, COUNT_FILE)) continue;
+    try {
+      if (Date.now() - fs.statSync(file2).mtimeMs > 30 * 24 * 36e5) fs.rmSync(file2, { force: true });
+    } catch {
+    }
+  }
 }
 function removeOldRootIfEmpty() {
   for (const dir of [OLD_PROFILES_DIR, OLD_TEMP_PROFILES_DIR, OLD_BROWSERS_DIR, OLD_ROOT]) {
@@ -37222,8 +37241,14 @@ var Browser = class _Browser {
     let letters = lettersByPage.get(this)?.get(`${targetId}/${documentId}`);
     if (!letters) {
       do
-        letters = toLetters(pagesCounted++);
+        letters = toLetters(nextPageNumber());
       while (letters === "s" || letters === "t");
+      const trouble = takeCountTrouble();
+      if (trouble) {
+        this.notices.push(
+          `The plugin could not keep its count of page ids (${trouble}), so an id given before the plugin last restarted could name a page now. Use only ids from listings given since then.`
+        );
+      }
       if (!lettersByPage.has(this)) lettersByPage.set(this, /* @__PURE__ */ new Map());
       lettersByPage.get(this).set(`${targetId}/${documentId}`, letters);
       pagesByLetters.set(letters, { browser: this.serial, targetId, documentId, shown: /* @__PURE__ */ new Map() });
@@ -37320,6 +37345,67 @@ var lettersByPage = /* @__PURE__ */ new WeakMap();
 var pagesByLetters = /* @__PURE__ */ new Map();
 var pagesCounted = 0;
 var browsersOpened = 0;
+var countTrouble = null;
+var countTroubleTold = false;
+function takeCountTrouble() {
+  if (!countTrouble || countTroubleTold) return null;
+  countTroubleTold = true;
+  return countTrouble;
+}
+function nextPageNumber() {
+  if (!COUNT_FILE) return pagesCounted++;
+  const file2 = COUNT_FILE;
+  try {
+    return underLock(file2, () => {
+      let saved = 0;
+      try {
+        const next = JSON.parse(fs2.readFileSync(file2, "utf8")).next;
+        if (Number.isSafeInteger(next) && next > 0) saved = next;
+        else noteCountTrouble("the saved count was unreadable");
+      } catch (e) {
+        if (e instanceof SyntaxError) noteCountTrouble("the saved count was unreadable");
+        else if (e.code !== "ENOENT") throw e;
+      }
+      const n = Math.max(saved, pagesCounted);
+      const part = `${file2}.${process.pid}.part`;
+      fs2.writeFileSync(part, JSON.stringify({ next: n + 1 }));
+      fs2.renameSync(part, file2);
+      pagesCounted = n + 1;
+      return n;
+    });
+  } catch (e) {
+    const code = e.code;
+    noteCountTrouble(code ? `its file could not be read or written: ${code}` : e instanceof Error ? e.message : String(e));
+    return pagesCounted++;
+  }
+}
+function noteCountTrouble(reason) {
+  countTrouble ??= reason;
+}
+function underLock(file2, fn) {
+  const lock = `${file2}.lock`;
+  fs2.mkdirSync(IDS_DIR, { recursive: true });
+  const until = Date.now() + 2e3;
+  for (; ; ) {
+    try {
+      fs2.closeSync(fs2.openSync(lock, "wx"));
+      break;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      try {
+        if (Date.now() - fs2.statSync(lock).mtimeMs > 1e4) fs2.rmSync(lock, { force: true });
+      } catch {
+      }
+      if (Date.now() > until) throw new Error("another server of this session held the count's lock");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs2.rmSync(lock, { force: true });
+  }
+}
 function pageOf(letters) {
   return pagesByLetters.get(letters) ?? null;
 }
@@ -37560,9 +37646,14 @@ function unlabelled(c) {
   if (c.kind === "mutation") return drop(what);
   if (c.kind !== "animation") return what;
   const on = what.indexOf(" on ");
-  if (on >= 0) return what.slice(0, on + 4) + drop(what.slice(on + 4));
-  const end = what.lastIndexOf(" (a");
-  return end >= 0 && /^ \(a\d+( "|\)$)/.test(what.slice(end)) ? what.slice(0, end + 2) + drop(what.slice(end + 2)) : what;
+  const named = / \(a\d+ "/.exec(what);
+  if (named && what.endsWith('")') && (on < 0 || named.index < on)) {
+    return what.slice(0, named.index + 2) + drop(what.slice(named.index + 2));
+  }
+  const bare = / \(a\d+\)$/.exec(what);
+  if (bare && on < 0) return what.slice(0, bare.index + 2) + drop(what.slice(bare.index + 2));
+  if (on >= 0 && /^a\d+(?= "| \(|$)/.test(what.slice(on + 4))) return what.slice(0, on + 4) + drop(what.slice(on + 4));
+  return what;
 }
 function settleLine(report) {
   const s = report?.settle;
@@ -37608,8 +37699,8 @@ async function capture(tab, params) {
   }
 }
 function remember(tab, snap) {
-  tab.lastListingId = snap.listingId;
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
+  tab.lastListingId = snap.listingId;
   const shown = pageOf(tab.letters)?.shown;
   for (const e of snap.elements ?? []) {
     if (shown && e.label && shown.has(e.label)) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
@@ -38369,7 +38460,7 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.2.2";
+var VERSION = "0.2.3";
 var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
@@ -38764,6 +38855,7 @@ process.stdin.on("end", () => {
 });
 try {
   moveFromChromeleon();
+  sweepPageCounts();
 } catch {
 }
 await server.connect(new StdioServerTransport());
