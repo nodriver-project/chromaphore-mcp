@@ -1,7 +1,7 @@
 {
   "name": "chromaphore",
   "displayName": "Chromaphore Browser",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings.",
   "author": {
     "name": "Chromaphore"
@@ -15,6 +15,12 @@
       "title": "Browser (optional)",
       "description": "A chrome.exe of Chromaphore to use instead of the one browser_install downloads. Leave empty to use the installed release.",
       "default": ""
+    },
+    "replay_options": {
+      "type": "boolean",
+      "title": "Replay options (optional)",
+      "description": "Adds options for replaying input from a pipeline of your own: a start time and a typing seed for input, and a check of a scripted burst against the text it must leave. Most uses do not need them.",
+      "default": false
     }
   }
 }

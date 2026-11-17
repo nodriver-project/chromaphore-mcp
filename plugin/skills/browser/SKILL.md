@@ -33,6 +33,19 @@ Elements outside the view can be clicked directly: the click scrolls them in fir
 - The listing shows each field's value afterwards; check it rather than assuming.
 - A JavaScript `alert`, `confirm` or `prompt` blocks the page: the action that opened it says so, and you answer with `dialog`.
 
+## Editors that draw their own text (Google Docs)
+
+Google Docs draws each page on a canvas: the listing shows the body as `Canvas` lines with no text, and an element click on them is refused. Work there by points and keys:
+
+- `click` with `x` and `y` (CSS pixels of the view) clicks at a point: between two characters it puts the caret there; `count: 2` takes a word, `count: 3` a paragraph, `modifiers: ["Shift"]` extends the selection. `drag` with `from_x`, `from_y` to `x`, `y` selects what lies between; its answer says "pointer drag, released". Points must be inside the view and nothing scrolls to them: bring the place into view with `scroll`, and read positions off a fresh `view`. A drag from a point to an element (`to`) scrolls to the element if it needs to. A drag cannot start at a point inside a frame of another site (a click at a point there works). On a large view the image is smaller than the view, and `view` says so with its scale: pass the point as you read it off the image together with its `snapshot_id`, or divide it by the scale.
+- A point read off the image is good to a few pixels: enough for a word (double click) or a line, not for the boundary between two letters. Reach an exact spot with keys from a known one: `Home`, `End`, `Ctrl+ArrowLeft`/`Ctrl+ArrowRight`.
+- A press on text that is already selected drags that text in an editor instead of starting a new selection: the answer then says "native drag, dropped", and the text has moved. Collapse the selection first: an arrow key, or a click elsewhere.
+- Keys go to the listed `textbox "Document content"`. Pass its id as `expect_focus` to `type`, `press` and `paste`: Docs opens boxes that take the focus (a Gemini prompt opens when text is selected), and then nothing is sent; the refusal names what has the focus. The focus is checked once, right before the first key, not during a long burst.
+- Use `quiet: true` on actions there: each key changes much of the listing, and the quiet answer still says what opened on top and where the focus went.
+- `type` with `keys` plays a burst as scripted: strings, `{"bs": 3}`, `{"pause_ms": 800}`, `{"press": "Ctrl+I"}` (italics on or off; a shortcut's key is a named key or one ASCII character, so type other characters as text). Give `keys` or `text`, not both. The answer says what the burst leaves (a plain `{"press": "Enter"}` counts as a newline), unless it presses keys whose effect on the text cannot be followed (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z). If a step fails midway, the answer says what went out before it.
+- Docs changes what you type by its own substitutions (Tools > Preferences): `"` becomes `“` or `”`, `--` an en dash, `...` an ellipsis, `(c)` ©, `1/2` ½. `paste` puts in plain text, which takes the formatting at the caret.
+- The document's exact text: `fetch` its export, `https://docs.google.com/document/d/<id>/export?format=txt`, or `format=docx` with `save_to` for the formatting (an HTML page with `save_to` is saved as the Markdown `fetch` renders it to, unless `mode: "raw"`). It is the saved state, so wait for "Saved to Drive" first.
+
 ## Reading state
 
 `eval_js` evaluates an expression in the page and returns JSON: use it for application state, `localStorage`, computed values, or checking what the DOM holds. Do not use it to click or type: script events are not trusted input and miss what the page does on real input.

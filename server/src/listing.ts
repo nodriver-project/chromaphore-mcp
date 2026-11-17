@@ -185,6 +185,33 @@ export function formatChange(snap: any, tabId: string, letters: string, printed?
   return lines.join('\n');
 }
 
+// formatChange without the element lines: what opened or closed on top, where
+// the focus went, the URL and title, and what live regions said, with a count
+// of the elements that changed. Nothing is printed, so nothing counts as shown.
+export function formatQuietChange(snap: any, letters: string): string {
+  const d = snap.delta;
+  if (!d || snap.baseline === false) {
+    return 'The page is not comparable with its last listing (a new document, or a listing too old); call observe to list it.';
+  }
+  const id = (label: string | undefined) => idOf(label, letters) ?? '(no id)';
+  const lines: string[] = [];
+  if (d.url) lines.push(`URL now ${d.url}`);
+  if (d.title) lines.push(`Title now ${JSON.stringify(clip(d.title, 100))}`);
+  for (const i of d.layersOpened ?? []) {
+    const l = snap.layers?.[i];
+    if (l) lines.push(`Opened: ${l.kind} ${JSON.stringify(clip(l.name, 80))}${l.blocking ? ' (blocks the page)' : ''}`);
+  }
+  for (const l of d.layersClosed ?? []) lines.push(`Closed: ${l.kind} ${JSON.stringify(clip(l.name, 80))}`);
+  const n = (d.added?.length ?? 0) + (d.removed?.length ?? 0) + (d.changed?.length ?? 0);
+  if (n) lines.push(`${n} element change(s) not listed (quiet); observe lists the page.`);
+  if (d.focus) lines.push(d.focus.label ? `Focus on ${id(d.focus.label)}` : 'Focus left the listed elements');
+  if (d.scroll) lines.push(`Scrolled to ${d.scroll.x},${d.scroll.y}`);
+  lines.push(...heardLines(snap));
+  if (d.partial) lines.push('A frame did not answer; its elements are as before.');
+  if (!lines.length) return 'No change on the page.';
+  return lines.join('\n');
+}
+
 // The report names a listed element by the browser's label and its name
 // (a12 "Save" (gone), transition opacity on a12 "Save", ... (a12 "Save")),
 // from the latest listing of whichever document the settle ran in, which

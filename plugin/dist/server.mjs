@@ -37640,6 +37640,29 @@ function formatChange(snap, tabId, letters, printed) {
   if (!lines.length) return "No change on the page.";
   return lines.join("\n");
 }
+function formatQuietChange(snap, letters) {
+  const d = snap.delta;
+  if (!d || snap.baseline === false) {
+    return "The page is not comparable with its last listing (a new document, or a listing too old); call observe to list it.";
+  }
+  const id2 = (label) => idOf(label, letters) ?? "(no id)";
+  const lines = [];
+  if (d.url) lines.push(`URL now ${d.url}`);
+  if (d.title) lines.push(`Title now ${JSON.stringify(clip(d.title, 100))}`);
+  for (const i of d.layersOpened ?? []) {
+    const l = snap.layers?.[i];
+    if (l) lines.push(`Opened: ${l.kind} ${JSON.stringify(clip(l.name, 80))}${l.blocking ? " (blocks the page)" : ""}`);
+  }
+  for (const l of d.layersClosed ?? []) lines.push(`Closed: ${l.kind} ${JSON.stringify(clip(l.name, 80))}`);
+  const n = (d.added?.length ?? 0) + (d.removed?.length ?? 0) + (d.changed?.length ?? 0);
+  if (n) lines.push(`${n} element change(s) not listed (quiet); observe lists the page.`);
+  if (d.focus) lines.push(d.focus.label ? `Focus on ${id2(d.focus.label)}` : "Focus left the listed elements");
+  if (d.scroll) lines.push(`Scrolled to ${d.scroll.x},${d.scroll.y}`);
+  lines.push(...heardLines(snap));
+  if (d.partial) lines.push("A frame did not answer; its elements are as before.");
+  if (!lines.length) return "No change on the page.";
+  return lines.join("\n");
+}
 function unlabelled(c) {
   const what = c.what ?? "";
   const drop = (s) => s.replace(/^a\d+ "/, '"').replace(/^a\d+(?= \(|\)|$)/, "a listed element");
@@ -37667,17 +37690,34 @@ function settleLine(report) {
 var images = /* @__PURE__ */ new Map();
 var snapshotCounter = 0;
 var KEEP_IMAGES = 8;
-function image(snapshotId) {
-  const img = images.get(snapshotId);
-  if (!img) throw new ToolError(`No snapshot ${snapshotId} (only the last ${KEEP_IMAGES} are kept). Call observe again.`);
+function image(snapshotId2) {
+  const img = images.get(snapshotId2);
+  if (!img) throw new ToolError(`No snapshot ${snapshotId2} (only the last ${KEEP_IMAGES} are kept). Call observe again.`);
   return img;
 }
-function keepImage(base643, letters) {
+function keepImage(base643, img) {
   if (!base643) return null;
   const id2 = `s${++snapshotCounter}`;
-  images.set(id2, { data: base643, mimeType: "image/jpeg", letters });
+  images.set(id2, { data: base643, mimeType: "image/jpeg", ...img });
   while (images.size > KEEP_IMAGES) images.delete(images.keys().next().value);
   return id2;
+}
+function scaleNote(img) {
+  if (img.scale === 1) return null;
+  const s = Math.round(img.scale * 1e3) / 1e3;
+  const w = Math.round(img.view.width * img.scale);
+  const h = Math.round(img.view.height * img.scale);
+  return `The image is ${w}x${h} pixels of a ${img.view.width}x${img.view.height} view (scale ${s}): a point read off it is at x\xF7${s}, y\xF7${s} in the view, or pass it as image pixels with snapshot_id.`;
+}
+function pointsOfImage(tab, snapshotId2, points) {
+  const img = image(snapshotId2);
+  if (img.targetId !== tab.targetId) {
+    throw new ToolError(`${snapshotId2} is a snapshot of another tab, not of the selected tab ${tab.id}. Take the point from a view of this tab.`);
+  }
+  if (img.letters !== tab.letters) {
+    throw new ToolError(`${snapshotId2} is a snapshot of a page this tab has since left. Call observe, then view the new snapshot.`);
+  }
+  return points.map((p) => p ? { x: p.x / img.scale, y: p.y / img.scale } : null);
 }
 async function settle2(tab, armId) {
   const call = (params) => onActivePage(() => tab.send("Page.agentSettle", params, 7e4));
@@ -37706,7 +37746,12 @@ function remember(tab, snap) {
     if (shown && e.label && shown.has(e.label)) shown.set(e.label, { role: e.role, name: e.name, reads: e.reads });
   }
   tab.viewport = { width: snap.viewport.width, height: snap.viewport.height };
-  return keepImage(snap.screenshot, tab.letters);
+  return keepImage(snap.screenshot, {
+    letters: tab.letters,
+    scale: snap.viewport.screenshotScale ?? 1,
+    view: { ...tab.viewport },
+    targetId: tab.targetId
+  });
 }
 function noticesOf(tab) {
   return [...tab.browser.takeNotices(), ...tab.takeNotices()];
@@ -37720,7 +37765,7 @@ function dialogLine(tab) {
   const d = tab.dialog;
   return `A ${d.type} dialog opened: ${JSON.stringify(d.message)}. The page waits until it is answered; call dialog.`;
 }
-async function afterAction(tab, said, outcome) {
+async function afterAction(tab, said, outcome, quiet2 = false) {
   const lines = [...said];
   for (const ev of outcome?.events ?? []) lines.push(`It led to ${describeEvent(ev)}.`);
   const work = (async () => {
@@ -37733,7 +37778,8 @@ async function afterAction(tab, said, outcome) {
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
   const id2 = remember(tab, r.snap);
-  lines.push(...noticesOf(tab), "", formatChange(r.snap, tab.id, tab.letters, shownOn(tab)));
+  const change = quiet2 ? formatQuietChange(r.snap, tab.letters) : formatChange(r.snap, tab.id, tab.letters, shownOn(tab));
+  lines.push(...noticesOf(tab), "", change);
   return withSnapshotId(lines.join("\n"), id2);
 }
 async function observe(tab, offscreen, scope) {
@@ -37863,8 +37909,8 @@ function stillReads(seen, now) {
 function readsAsNamed(seen, now) {
   let name = squash(seen.name);
   if (!name) return true;
-  const cut = name.indexOf("\u2026");
-  if (cut > 0) name = name.slice(0, cut).trim();
+  const cut2 = name.indexOf("\u2026");
+  if (cut2 > 0) name = name.slice(0, cut2).trim();
   if (name.length > 40) name = name.slice(0, 40);
   const nl = now.indexOf("\n");
   const label = squash(nl >= 0 ? now.slice(0, nl) : now);
@@ -37918,13 +37964,161 @@ async function moveTo(tab, t, end, modifiers = 0) {
   );
   let r = await once();
   if (r.outcome === "covered") r = await once();
-  tab.pointer = { x: r.x, y: r.y };
+  if (r.x !== void 0) tab.pointer = { x: r.x, y: r.y };
   return r;
 }
 function refusal(verb, t, r) {
   const why = MOVE_REFUSALS[r.outcome] ?? r.outcome;
   const hit = r.hit ? ` (${r.hit}${r.hitKind ? `, ${r.hitKind}` : ""})` : "";
   return `Did not ${verb} ${t.label}: ${why}${hit}.${r.reason && !MOVE_REFUSALS[r.reason] ? ` ${r.reason}` : ""}`;
+}
+async function viewSize(tab) {
+  if (!tab.viewport) await viewCentre(tab);
+  return tab.viewport;
+}
+async function checkPoint(tab, p) {
+  const v = await viewSize(tab);
+  if (!(p.x >= 0 && p.y >= 0 && p.x < v.width && p.y < v.height)) {
+    throw new ToolError(`(${p.x}, ${p.y}) is outside the view (${v.width}x${v.height}); scroll first, or aim inside it.`);
+  }
+}
+async function moveToPoint(tab, p, end, modifiers = 0) {
+  const r = await withPointer(
+    tab,
+    (pp) => tab.send("Input.moveTo", { x: p.x, y: p.y, ...pp, ...end ? { end } : {}, modifiers }, 3e4)
+  );
+  if (r.x !== void 0) tab.pointer = { x: r.x, y: r.y };
+  return r;
+}
+var at = (p) => `(${Math.round(p.x * 10) / 10}, ${Math.round(p.y * 10) / 10})`;
+function pointRefusal(verb, p, r) {
+  const why = r.outcome === "unreachable" ? "the hand could not get there" : MOVE_REFUSALS[r.outcome] ?? r.outcome;
+  return `Did not ${verb} ${at(p)}: ${why}${r.reason && !MOVE_REFUSALS[r.reason] ? ` (${r.reason})` : ""}.`;
+}
+var LONGEST_WAIT_MS = 15 * 6e4;
+function parseNotBefore(v) {
+  if (v === void 0) return void 0;
+  if (typeof v === "number") {
+    if (!Number.isFinite(v) || v < 1e12) throw new ToolError(`not_before ${v} is not a time in epoch milliseconds.`);
+    return v;
+  }
+  if (!/(Z|[+-]\d\d:?\d\d)$/i.test(v.trim())) {
+    throw new ToolError(`not_before "${v}" has no time zone: end it with Z (UTC) or an offset such as +01:00.`);
+  }
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) throw new ToolError(`not_before "${v}" is not a time ISO 8601 can read.`);
+  return t;
+}
+function checkNotBefore(t) {
+  if (t === void 0) return;
+  const ms = t - Date.now();
+  if (ms > LONGEST_WAIT_MS) {
+    throw new ToolError(`not_before is ${Math.round(ms / 1e3)} s away; this waits at most ${LONGEST_WAIT_MS / 6e4} minutes. Nothing was done. Call again nearer the time.`);
+  }
+}
+var Cancelled = class extends Error {
+};
+function pause(ms, signal) {
+  if (signal?.aborted) return Promise.reject(new Cancelled());
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve2, reject) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      signal?.removeEventListener("abort", aborted2);
+      resolve2();
+    }
+    function aborted2() {
+      clearTimeout(timer);
+      reject(new Cancelled());
+    }
+    signal?.addEventListener("abort", aborted2, { once: true });
+  });
+}
+async function waitUntil(t, signal) {
+  if (t === void 0) return;
+  try {
+    for (let ms = t - Date.now(); ms > 0; ms = t - Date.now()) await pause(ms, signal);
+  } catch (e) {
+    if (e instanceof Cancelled) throw new ToolError("Cancelled while waiting for not_before; no key was sent.");
+    throw e;
+  }
+}
+var iso = (ms) => new Date(ms).toISOString();
+function timesLine(notBefore2, began, ended) {
+  const late2 = notBefore2 === void 0 ? "" : began - notBefore2 > 50 ? `, ${began - notBefore2} ms after not_before` : ", at not_before";
+  return `Ran from ${iso(began)}${late2} to ${iso(ended)} (${ended - began} ms).`;
+}
+async function worldOf(tab) {
+  const w = await onActivePage(() => tab.send("Page.createIsolatedWorld", { frameId: tab.targetId, worldName: "chromaphore" }));
+  return w.executionContextId;
+}
+var FOCUS_CHECK = `function () {
+  const target = this;
+  let e = document.activeElement;
+  let frame = null;
+  for (let i = 0; i < 32 && e; i++) {
+    if (e.shadowRoot && e.shadowRoot.activeElement) { e = e.shadowRoot.activeElement; continue; }
+    let inner = null;
+    try { inner = e.contentDocument; } catch (x) {}
+    if (!inner || !inner.activeElement) break;
+    const a = inner.activeElement;
+    if (a === inner.body) {
+      if (a && (a.isContentEditable || inner.designMode === 'on')) { frame = e; e = a; }
+      break;
+    }
+    e = a;
+  }
+  const has = !!e && (e === target || (frame !== null && frame === target));
+  const clip = (s) => { s = String(s).replace(/\\s+/g, ' ').trim(); return s.length > 50 ? s.slice(0, 49) + '\u2026' : s; };
+  let what = 'nothing';
+  if (e && e === document.body) what = 'nothing (the page itself)';
+  else if (e) {
+    what = e.tagName.toLowerCase();
+    const role = e.getAttribute('role');
+    const label = e.getAttribute('aria-label');
+    if (role) what += ' role=' + clip(role);
+    if (label) what += ' "' + clip(label) + '"';
+    if (e.id) what += ' #' + clip(e.id);
+    if (frame) what += ' (the editable body of a frame)';
+  }
+  return { has, what };
+}`;
+async function focusTarget(tab, id2) {
+  if (!id2) return null;
+  const t = await resolve(tab, id2);
+  if (t.frameId !== tab.targetId) {
+    throw new ToolError(
+      `${id2} is in a frame of another site, where expect_focus cannot check the focus. Nothing was done. Leave expect_focus out to send the keys unchecked.`
+    );
+  }
+  return { id: id2, t };
+}
+async function focusRefusal(tab, ft) {
+  if (!ft) return null;
+  let now;
+  try {
+    now = await focusTarget(tab, ft.id);
+  } catch (e) {
+    if (e instanceof ToolError) return `Nothing sent: ${e.message.replace(/ ?Nothing was done\./, "")}`;
+    throw e;
+  }
+  const contextId = await worldOf(tab);
+  let objectId;
+  try {
+    const node2 = await tab.send("DOM.resolveNode", { backendNodeId: now.t.backendNodeId, executionContextId: contextId }).catch(() => null);
+    objectId = node2?.object?.objectId;
+    if (!objectId) {
+      return `Nothing sent: the focus check cannot read the frame ${ft.id} is in (such as a frame of another origin). Leave expect_focus out to send the keys unchecked.`;
+    }
+    const r = await tab.send("Runtime.callFunctionOn", { objectId, functionDeclaration: FOCUS_CHECK, returnByValue: true });
+    if (r.exceptionDetails) throw new ToolError(`The focus check failed: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
+    const v = r.result?.value ?? {};
+    if (v.has) return null;
+    return `Nothing sent: ${ft.id} does not have the keyboard focus; ${v.what ?? "something else"} has it (a box that opened can take it). Call observe to see the page.`;
+  } finally {
+    if (objectId) tab.send("Runtime.releaseObject", { objectId }).catch(() => {
+    });
+  }
 }
 var MODIFIERS = { alt: 1, ctrl: 2, control: 2, meta: 4, cmd: 4, shift: 8 };
 function modifierBits(names = []) {
@@ -37943,7 +38137,16 @@ async function click(tab, id2, opts = {}) {
   const r = await moveTo(tab, t, end, modifierBits(opts.modifiers));
   if (r.outcome !== "clicked") return refusal("click", t, r);
   const landed = r.hit ? ` (the press landed on ${r.hit})` : "";
-  return afterAction(tab, [`Clicked ${id2}${landed}.`], r.actionOutcome);
+  return afterAction(tab, [`Clicked ${id2}${landed}.`], r.actionOutcome, opts.quiet);
+}
+async function clickAt(tab, p, opts = {}) {
+  assertNoDialog(tab);
+  await checkPoint(tab, p);
+  const end = { action: "click", button: opts.button ?? "left", clickCount: opts.count ?? 1 };
+  const r = await moveToPoint(tab, p, end, modifierBits(opts.modifiers));
+  if (r.outcome !== "clicked") return pointRefusal("click at", p, r);
+  const times = (opts.count ?? 1) > 1 ? ` ${opts.count} times` : "";
+  return afterAction(tab, [`Clicked at ${at(p)}${times}.`], r.actionOutcome, opts.quiet);
 }
 async function hover(tab, id2) {
   assertNoDialog(tab);
@@ -37954,6 +38157,13 @@ async function hover(tab, id2) {
   if (r.outcome !== "arrived") return refusal("hover over", t, r);
   return afterAction(tab, [`The pointer is on ${id2}.`]);
 }
+async function hoverAt(tab, p) {
+  assertNoDialog(tab);
+  await checkPoint(tab, p);
+  const r = await moveToPoint(tab, p);
+  if (r.outcome !== "arrived") return pointRefusal("move to", p, r);
+  return afterAction(tab, [`The pointer is at ${at(p)}.`]);
+}
 var NO_TYPOS = {
   inputTypes: ["password", "number", "tel", "date", "time", "datetime-local", "month", "week", "email", "url"],
   autocompleteTokens: ["one-time-code"],
@@ -37961,40 +38171,196 @@ var NO_TYPOS = {
   inputModes: ["numeric", "decimal", "tel"],
   maxLengthAtMost: 6
 };
+function planBurst(keys) {
+  return keys.map((k, i) => {
+    if (typeof k === "string") return { kind: "text", text: k };
+    if ("bs" in k) return { kind: "bs", n: k.bs };
+    if ("pause_ms" in k) return { kind: "pause", ms: k.pause_ms };
+    try {
+      return { kind: "press", label: k.press, ...chordOf(k.press) };
+    } catch (e) {
+      throw new ToolError(`Nothing typed: step ${i + 1} of keys, {"press": ${JSON.stringify(k.press)}}: ${e.message}`);
+    }
+  });
+}
+var ALT = 1;
+var CTRL = 2;
+var META = 4;
+var TYPES_AS = { Enter: "\n", Tab: "	", Space: " " };
+var UNFOLLOWED_WITH_CTRL = /* @__PURE__ */ new Set([
+  "a",
+  "v",
+  "x",
+  "z",
+  "y",
+  "Backspace",
+  "Delete",
+  "Enter",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End"
+]);
+function unfollowed(s) {
+  if (!(s.modifiers & (CTRL | ALT | META))) return !(s.modifiers === 0 && (s.key in TYPES_AS || s.key === "Backspace"));
+  return !!(s.modifiers & (CTRL | META)) && UNFOLLOWED_WITH_CTRL.has(s.key);
+}
+function burstText(steps) {
+  let text2 = "";
+  let reachesBack = 0;
+  const blind = [];
+  const back = (count) => {
+    const chars = [...text2];
+    const n = Math.min(count, chars.length);
+    text2 = chars.slice(0, chars.length - n).join("");
+    reachesBack += count - n;
+  };
+  for (const s of steps) {
+    if (s.kind === "text") text2 += s.text;
+    else if (s.kind === "bs") back(s.n);
+    else if (s.kind === "press") {
+      if (unfollowed(s)) blind.push(s.label);
+      else if (s.modifiers === 0 && s.key in TYPES_AS) text2 += TYPES_AS[s.key];
+      else if (s.modifiers === 0 && s.key === "Backspace") back(1);
+    }
+  }
+  return { text: text2, reachesBack, unfollowed: blind };
+}
+function cut(s, max = 120) {
+  const chars = [...s];
+  return chars.length > max ? chars.slice(0, max - 1).join("") + "\u2026" : s;
+}
+function textCheck(steps, text2) {
+  const left = burstText(steps);
+  if (left.unfollowed.length) {
+    const named = left.unfollowed.map((p) => `{"press": ${JSON.stringify(p)}}`).join(", ");
+    return `Nothing typed: with text given, the check cannot follow what ${named} does to the text. Leave text out to play the burst unchecked.`;
+  }
+  if (left.text !== text2 || left.reachesBack) {
+    return `Nothing typed: keys leave ${JSON.stringify(cut(left.text))}${left.reachesBack ? ` and delete ${left.reachesBack} character(s) from before the burst` : ""}, not text ${JSON.stringify(cut(text2))}.`;
+  }
+  return null;
+}
+function stepWords(s) {
+  switch (s.kind) {
+    case "text":
+      return JSON.stringify(cut(s.text, 40));
+    case "bs":
+      return `{"bs": ${s.n}}`;
+    case "pause":
+      return `{"pause_ms": ${s.ms}}`;
+    case "press":
+      return `{"press": ${JSON.stringify(s.label)}}`;
+  }
+}
+function keyGap(rand, speed) {
+  return Math.round((40 + rand() * 120) / speed);
+}
+function fmix32(h) {
+  h ^= h >>> 16;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  h = Math.imul(h, 3266489909);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+function seeded(seed) {
+  const lo = seed >>> 0;
+  const hi = Math.floor(seed / 2 ** 32) >>> 0;
+  let s = fmix32(fmix32(lo ^ 2654435769) ^ hi ^ 2135587861) || 2654435769;
+  return () => {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return (s >>> 0) / 2 ** 32;
+  };
+}
+function cancelledLine(signal, what) {
+  return signal?.aborted ? `Stopped on request: ${what}.` : null;
+}
+async function clickInto(tab, id2, verb) {
+  const t = await resolve(tab, id2);
+  const hidden = await reveal(tab, t);
+  if (hidden) return `${verb} ${hidden}`;
+  const r = await moveTo(tab, t, { action: "click" });
+  if (r.outcome !== "clicked") return refusal("click into", t, r);
+  return null;
+}
 async function type(tab, opts) {
   assertNoDialog(tab);
+  if (opts.text === void 0 && !opts.keys) throw new ToolError("Give text, or keys.");
+  if (opts.keys && opts.exact === false) throw new ToolError("keys are played as given, with no typos of the tool's own; leave exact out.");
+  checkNotBefore(opts.notBefore);
+  const plan = opts.keys ? planBurst(opts.keys) : null;
+  if (plan && opts.text !== void 0) {
+    const refused = textCheck(plan, opts.text);
+    if (refused) return refused;
+  }
+  const ft = await focusTarget(tab, opts.expectFocus);
+  const signal = opts.signal;
+  const speed = opts.speed ?? 1;
   const said = [];
   if (opts.id) {
-    const t = await resolve(tab, opts.id);
-    const hidden = await reveal(tab, t);
-    if (hidden) return `Nothing typed. ${hidden}`;
-    const r = await moveTo(tab, t, { action: "click" });
-    if (r.outcome !== "clicked") return refusal("click into", t, r);
+    const refused = await clickInto(tab, opts.id, "Nothing typed.");
+    if (refused) return refused;
   }
-  if (opts.clear) {
-    await tab.send("Input.dispatchKeyChord", { modifiers: 2, key: "a" });
-    if (!opts.text) await tab.send("Input.dispatchKeyChord", { modifiers: 0, key: "Delete" });
-  }
+  await waitUntil(opts.notBefore, signal);
+  assertNoDialog(tab);
+  const unfocused = await focusRefusal(tab, ft);
+  if (unfocused) return [...said, unfocused].join("\n");
+  const stopped = cancelledLine(signal, "no key was sent");
+  if (stopped) return stopped;
+  const began = Date.now();
   let outcome;
-  if (opts.text) {
-    const typos = opts.exact ? 0 : 0.015;
+  const chord = async (key, modifiers = 0, pace = speed) => {
+    const r = await tab.send("Input.dispatchKeyChord", { modifiers, key, speedMultiplier: pace });
+    outcome = r.actionOutcome ?? outcome;
+  };
+  if (opts.clear) {
+    await chord("a", CTRL);
+    if (!opts.text && !opts.keys && !signal?.aborted) await chord("Delete");
+  }
+  const seed = opts.seed ?? randomInt(0, 2 ** 47);
+  const keystrokes = async (text2, typos, part, readBack) => {
     const r = await tab.send(
       "Input.dispatchKeystrokes",
       {
-        text: opts.text,
+        text: text2,
         keystrokeDelayMin: 60,
         keystrokeDelayMax: 260,
+        speedMultiplier: speed,
         thinkingPauseProbability: 0.02,
         thinkingPauseMin: 300,
         thinkingPauseMax: 800,
         typoProbability: typos,
         ...typos ? { noTypos: NO_TYPOS } : {},
-        seed: randomInt(0, 2 ** 47),
-        readBack: true
+        seed: seed + part,
+        readBack
       },
-      3e4 + opts.text.length * 1e3
+      3e4 + text2.length * 1e3 / Math.min(speed, 1)
     );
-    outcome = r.actionOutcome;
+    outcome = r.actionOutcome ?? outcome;
+    return r;
+  };
+  let failed = false;
+  if (plan) {
+    const r = await playBurst(plan, { speed, seed, signal, keystrokes, chord });
+    if (r.cancelled) return `Stopped on request before step ${r.at + 1} of ${plan.length}; before it went out ${r.counts}.`;
+    if (r.failed) {
+      failed = true;
+      said.push(`The burst stopped at step ${r.at + 1} of ${plan.length} (${stepWords(plan[r.at])}): ${r.failed}. Before it went out ${r.counts}; nothing after it.`);
+    } else {
+      const left = burstText(plan);
+      const where = r.last?.fieldBefore?.kind === "none" ? " (nothing had focus: the keys went to the page)" : "";
+      const leaves = left.unfollowed.length ? "" : `; it leaves ${JSON.stringify(cut(left.text))}${left.reachesBack ? ` and deletes ${left.reachesBack} character(s) from before it` : ""}`;
+      said.push(`Typed the burst${opts.id ? ` into ${opts.id}` : ""}: ${r.counts}${where}${leaves}.`);
+      if (r.last?.fieldAfter?.moved) said.push("Focus moved on by itself after the keys.");
+    }
+  } else if (opts.text) {
+    if (signal?.aborted) return "Stopped on request: nothing was typed.";
+    const r = await keystrokes(opts.text, opts.exact ? 0 : 0.015, 0, true);
     const where = r.fieldBefore?.kind === "none" ? " (nothing had focus: the keys went to the page)" : "";
     const typoWords = r.typosCorrected ? `, making and correcting ${r.typosCorrected} typo(s)` : "";
     said.push(`Typed ${opts.text.length} character(s)${opts.id ? ` into ${opts.id}` : ""}${typoWords}${where}.`);
@@ -38002,12 +38368,69 @@ async function type(tab, opts) {
   } else if (opts.clear) {
     said.push(`Cleared ${opts.id ?? "the focused field"}.`);
   }
-  if (opts.submit) {
-    const r = await tab.send("Input.dispatchKeyChord", { modifiers: 0, key: "Enter" });
-    outcome = r.actionOutcome ?? outcome;
+  if (signal?.aborted) return "Stopped on request after the keys under way; nothing after them was sent.";
+  if (opts.submit && !failed) {
+    await chord("Enter");
     said.push("Pressed Enter.");
   }
-  return afterAction(tab, said, outcome);
+  if (opts.notBefore !== void 0) said.push(timesLine(opts.notBefore, began, Date.now()));
+  if (failed) return keepAccount(said, () => afterAction(tab, said, outcome, opts.quiet));
+  return afterAction(tab, said, outcome, opts.quiet);
+}
+async function keepAccount(said, list) {
+  try {
+    return await list();
+  } catch (e) {
+    const why = e instanceof CdpError ? `${e.method} failed: ${e.message}` : e instanceof Error ? e.message : String(e);
+    return [...said, `The page could not be listed afterwards: ${why}`].join("\n");
+  }
+}
+async function playBurst(plan, o) {
+  const rand = seeded(o.seed);
+  const n = { chars: 0, bs: 0, pauses: 0, presses: 0 };
+  const counts = () => {
+    const parts = [`${n.chars} character(s)`];
+    if (n.bs) parts.push(`${n.bs} Backspace(s)`);
+    if (n.presses) parts.push(`${n.presses} key press(es)`);
+    if (n.pauses) parts.push(`${n.pauses} pause(s)`);
+    return parts.join(", ");
+  };
+  let last = null;
+  let gap = false;
+  for (let i = 0; i < plan.length; i++) {
+    const s = plan[i];
+    try {
+      if (o.signal?.aborted) throw new Cancelled();
+      if (s.kind === "pause") {
+        await pause(s.ms, o.signal);
+        n.pauses++;
+        gap = false;
+        continue;
+      }
+      if (gap) await pause(keyGap(rand, o.speed), o.signal);
+      gap = true;
+      if (s.kind === "text") {
+        if (!s.text) continue;
+        const r = await o.keystrokes(s.text, 0, i, i === plan.length - 1);
+        last = r;
+        n.chars += [...s.text].length;
+      } else if (s.kind === "bs") {
+        for (let k = 0; k < s.n; k++) {
+          if (o.signal?.aborted) throw new Cancelled();
+          await o.chord("Backspace", 0, o.speed * 1.6);
+          n.bs++;
+        }
+      } else {
+        await o.chord(s.key, s.modifiers);
+        n.presses++;
+      }
+    } catch (e) {
+      if (e instanceof Cancelled) return { counts: counts(), last, at: i, cancelled: true };
+      const why = e instanceof CdpError ? `${e.method} failed: ${e.message}` : e instanceof Error ? e.message : String(e);
+      return { counts: counts(), last, at: i, failed: why };
+    }
+  }
+  return { counts: counts(), last, at: plan.length };
 }
 var KEY_NAMES = {
   enter: "Enter",
@@ -38033,19 +38456,61 @@ var KEY_NAMES = {
   arrowdown: "ArrowDown",
   space: "Space"
 };
-async function press(tab, keys, times = 1) {
+var CHORD_KEYS = /* @__PURE__ */ new Set([
+  "Enter",
+  "Tab",
+  "Backspace",
+  "Escape",
+  "Delete",
+  "Insert",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "ArrowLeft",
+  "ArrowUp",
+  "ArrowRight",
+  "ArrowDown",
+  "Space",
+  "CapsLock",
+  "NumLock",
+  "ScrollLock"
+]);
+function chordOf(keys) {
+  const parts = keys.endsWith("++") ? [...keys.slice(0, -2).split("+"), "+"] : keys.split("+");
+  const names = parts.map((s) => s === "+" ? s : s.trim()).filter(Boolean);
+  const keyPart = names.pop();
+  if (!keyPart) throw new ToolError(`"${keys}" names no key; name one such as Enter, Escape, Tab or Ctrl+A.`);
+  const modifiers = modifierBits(names);
+  const key = /^f([1-9]|1[0-2])$/i.test(keyPart) ? keyPart.toUpperCase() : KEY_NAMES[keyPart.toLowerCase()] ?? ([...keyPart].length === 1 ? keyPart.toLowerCase() : keyPart);
+  if ([...key].length !== 1 && !CHORD_KEYS.has(key) && !/^F([1-9]|1[0-2])$/.test(key)) {
+    throw new ToolError(`"${keys}": ${JSON.stringify(keyPart)} is not a key; name one character or a key such as Enter, Escape, Tab, ArrowDown, Home or F5.`);
+  }
+  if ([...key].length === 1 && !(key >= "!" && key <= "~")) {
+    throw new ToolError(`"${keys}": a shortcut's key must be an ASCII character (! to ~) or a named key such as Space, Enter or ArrowDown; ${JSON.stringify(keyPart)} is neither. Type other characters as text.`);
+  }
+  return { modifiers, key };
+}
+async function press(tab, keys, times = 1, opts = {}) {
   assertNoDialog(tab);
-  const parts = keys.split("+").map((s) => s.trim()).filter(Boolean);
-  const keyPart = parts.pop();
-  if (!keyPart) throw new ToolError("Name a key, such as Enter, Escape, Tab or Ctrl+A.");
-  const modifiers = modifierBits(parts);
-  const key = /^f([1-9]|1[0-2])$/i.test(keyPart) ? keyPart.toUpperCase() : KEY_NAMES[keyPart.toLowerCase()] ?? (keyPart.length === 1 ? keyPart.toLowerCase() : keyPart);
+  const { modifiers, key } = chordOf(keys);
+  checkNotBefore(opts.notBefore);
+  const ft = await focusTarget(tab, opts.expectFocus);
+  await waitUntil(opts.notBefore, opts.signal);
+  assertNoDialog(tab);
+  const unfocused = await focusRefusal(tab, ft);
+  if (unfocused) return unfocused;
+  const began = Date.now();
   let outcome;
-  for (let i = 0; i < times; i++) {
+  let done = 0;
+  for (; done < times; done++) {
+    if (opts.signal?.aborted) return `Stopped on request after ${done} of ${times} press(es).`;
     const r = await tab.send("Input.dispatchKeyChord", { modifiers, key });
     outcome = r.actionOutcome ?? outcome;
   }
-  return afterAction(tab, [`Pressed ${keys}${times > 1 ? ` ${times} times` : ""}.`], outcome);
+  const said = [`Pressed ${keys}${times > 1 ? ` ${times} times` : ""}.`];
+  if (opts.notBefore !== void 0) said.push(timesLine(opts.notBefore, began, Date.now()));
+  return afterAction(tab, said, outcome, opts.quiet);
 }
 async function scroll(tab, opts) {
   assertNoDialog(tab);
@@ -38073,7 +38538,7 @@ async function scroll(tab, opts) {
   };
   const said = [SAID[r.outcome] ?? `Not scrolled: ${r.outcome}${r.hit ? ` (${r.hit})` : ""}${r.reason ? `, ${r.reason}` : ""}.`];
   if (r.movedOver) said.push(`The hand moved over ${r.movedOver} to find something that scrolls.`);
-  return afterAction(tab, said, r.actionOutcome);
+  return afterAction(tab, said, r.actionOutcome, opts.quiet);
 }
 function withScheme(url2) {
   return /^[a-z][a-z0-9+.-]*:/i.test(url2) ? url2 : `https://${url2}`;
@@ -38194,8 +38659,52 @@ async function upload(tab, id2, files) {
   const field = r.field ? ` (${r.field}${r.accept ? `, accepts ${r.accept}` : ""})` : "";
   return afterAction(tab, [`Chose ${absolute.length} file(s) for ${id2}${field}.`], r.actionOutcome);
 }
+function dragFailed(r) {
+  return `Not dragged: ${r.outcome}${r.reason ? `, ${r.reason}` : ""}${r.putBack ? " (let go where it was grabbed)" : ""}.`;
+}
+async function dragFromPoint(tab, from, opts) {
+  await checkPoint(tab, from);
+  const modifiers = modifierBits(opts.modifiers);
+  let target;
+  let end;
+  if (opts.to) {
+    const t = await resolve(tab, opts.to);
+    target = { targetNodeId: t.backendNodeId, targetFrameId: t.frameId };
+    end = opts.to;
+  } else if (opts.x !== void 0 && opts.y !== void 0) {
+    const p = { x: opts.x, y: opts.y };
+    await checkPoint(tab, p);
+    target = { pointX: p.x, pointY: p.y };
+    end = at(p);
+  } else {
+    throw new ToolError("Say where to let go: x and y (a point in the view), or to (an id).");
+  }
+  const r = await withPointer(
+    tab,
+    (p) => tab.send("Input.performDrag", { grabX: from.x, grabY: from.y, ...target, modifiers, ...p }, 13e4)
+  );
+  if (r.x !== void 0) tab.pointer = { x: r.x, y: r.y };
+  if (r.outcome !== "dropped" && r.outcome !== "released") {
+    const inFrame = r.outcome === "covered" && /in another frame/.test(r.reason ?? "");
+    return dragFailed(r) + (inFrame ? " A drag cannot start at a point inside a frame of another site; a click at a point there works." : "");
+  }
+  const said = [`Dragged from ${at(from)} to ${end} (${r.kind} drag, ${r.outcome}).`];
+  if (r.kind === "native") {
+    said.push("The page took the press as a native drag: what was under it (text already selected, a link, an image or a draggable element) was dragged, and no new selection was made.");
+  }
+  return afterAction(tab, said, r.actionOutcome, opts.quiet);
+}
 async function drag(tab, opts) {
   assertNoDialog(tab);
+  if (opts.from_x !== void 0 || opts.from_y !== void 0) {
+    if (opts.from || opts.from_x === void 0 || opts.from_y === void 0) {
+      throw new ToolError("Start the drag at an element (from) or at a point (from_x and from_y), not both.");
+    }
+    if (opts.value !== void 0 || opts.slot) throw new ToolError("value and slot are for dragging an element.");
+    return dragFromPoint(tab, { x: opts.from_x, y: opts.from_y }, opts);
+  }
+  if (!opts.from) throw new ToolError("Say where the drag starts: from (an id), or from_x and from_y.");
+  if (opts.modifiers?.length) throw new ToolError("modifiers are for a drag from a point.");
   const grab = await resolve(tab, opts.from);
   const hidden = await reveal(tab, grab);
   if (hidden) return `Not dragged. ${hidden}`;
@@ -38215,29 +38724,35 @@ async function drag(tab, opts) {
     (p) => tab.send("Input.performDrag", { grabNodeId: grab.backendNodeId, grabFrameId: grab.frameId, ...target, ...p }, 13e4)
   );
   if (r.x !== void 0) tab.pointer = { x: r.x, y: r.y };
-  if (r.outcome !== "dropped" && r.outcome !== "released") {
-    return `Not dragged: ${r.outcome}${r.reason ? `, ${r.reason}` : ""}${r.putBack ? " (let go where it was grabbed)" : ""}.`;
-  }
+  if (r.outcome !== "dropped" && r.outcome !== "released") return dragFailed(r);
   const said = [`Dragged ${opts.from} (${r.kind} drag, ${r.outcome}).`];
   if (r.grabIndexBefore !== void 0 && r.grabIndexAfter !== void 0 && r.valueBefore === void 0) {
     said.push(`Its place in its list: ${r.grabIndexBefore} \u2192 ${r.grabIndexAfter} of ${r.siblingCount}.`);
   }
   if (r.valueBefore !== void 0) said.push(`Its value: ${r.valueBefore} \u2192 ${r.valueAfter}.`);
-  return afterAction(tab, said, r.actionOutcome);
+  return afterAction(tab, said, r.actionOutcome, opts.quiet);
 }
-async function paste(tab, text2, id2) {
+async function paste(tab, text2, id2, opts = {}) {
   assertNoDialog(tab);
+  checkNotBefore(opts.notBefore);
+  const ft = await focusTarget(tab, opts.expectFocus);
   if (id2) {
-    const t = await resolve(tab, id2);
-    const hidden = await reveal(tab, t);
-    if (hidden) return `Nothing pasted. ${hidden}`;
-    const r2 = await moveTo(tab, t, { action: "click" });
-    if (r2.outcome !== "clicked") return refusal("click into", t, r2);
+    const refused = await clickInto(tab, id2, "Nothing pasted.");
+    if (refused) return refused;
   }
+  await waitUntil(opts.notBefore, opts.signal);
+  assertNoDialog(tab);
+  const unfocused = await focusRefusal(tab, ft);
+  if (unfocused) return unfocused;
+  const stopped = cancelledLine(opts.signal, "nothing was pasted");
+  if (stopped) return stopped;
+  const began = Date.now();
   const r = await tab.send("Input.dispatchPaste", { text: text2, readBack: true }, 3e4);
   const where = r.fieldBefore?.kind === "none" ? " (nothing had focus: the paste went to the page)" : "";
-  const landed = r.fieldAfter?.contains === false ? " The field does not hold the text afterwards." : "";
-  return afterAction(tab, [`Pasted ${text2.length} character(s)${id2 ? ` into ${id2}` : ""}${where}.${landed}`], r.actionOutcome);
+  const landed = r.fieldAfter?.contains !== false ? "" : r.fieldAfter?.length === 0 ? " The field is empty afterwards: the paste did not land, or the page keeps its text elsewhere (as Google Docs does)." : " The field does not hold the text afterwards.";
+  const said = [`Pasted ${text2.length} character(s)${id2 ? ` into ${id2}` : ""}${where}.${landed}`];
+  if (opts.notBefore !== void 0) said.push(timesLine(opts.notBefore, began, Date.now()));
+  return afterAction(tab, said, r.actionOutcome, opts.quiet);
 }
 
 // src/browser_tools.ts
@@ -38246,6 +38761,17 @@ import path4 from "node:path";
 var stamp = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 async function fetchUrl(b, o) {
   const url2 = withScheme(o.url);
+  const saveTo = o.save_to ? path4.resolve(o.save_to) : null;
+  if (saveTo) {
+    if (fs4.existsSync(saveTo)) {
+      throw new ToolError(`${saveTo} already exists; save_to never replaces a file. Name a new one. Nothing was fetched.`);
+    }
+    try {
+      fs4.mkdirSync(path4.dirname(saveTo), { recursive: true });
+    } catch (e) {
+      throw new ToolError(`The folder for save_to, ${path4.dirname(saveTo)}, cannot be made (${errWords(e)}). Nothing was fetched.`);
+    }
+  }
   const r = await b.conn.send(
     "Browser.agentFetch",
     {
@@ -38255,6 +38781,7 @@ async function fetchUrl(b, o) {
       ...o.headers ? { headers: o.headers } : {},
       ...o.body !== void 0 ? { body: o.body } : {},
       ...o.links ? { links: true } : {},
+      ...saveTo ? { saveTo } : {},
       timeoutMs: 6e4
     },
     void 0,
@@ -38268,17 +38795,28 @@ async function fetchUrl(b, o) {
     const c = r.challenge;
     head.push(`Challenge: ${c.vendor ?? "unknown"} ${c.kind ?? ""}${c.cleared ? " (cleared)" : ""}${c.rateLimited ? `, rate limited${c.retryAfter ? `, retry after ${c.retryAfter}` : ""}` : ""}`);
   }
-  if (r.savedTo) head.push(`Body saved to ${r.savedTo} (${r.bytes} bytes)`);
+  if (r.savedTo) {
+    const cut2 = r.truncated && r.bytes >= BROWSER_CAP ? `; cut at ${BROWSER_CAP / 2 ** 20} MiB, so not the whole body` : "";
+    head.push(`Body saved to ${r.savedTo} (${r.bytes} bytes${cut2})`);
+  } else if (saveTo) {
+    head.push(saveLine(saveTo, r));
+  }
   const body = r.markdown ?? r.text ?? "";
   const max = o.max_chars ?? 4e4;
   let shown = body;
   if (body.length > max) {
     const file2 = path4.join(b.profile, "fetched", `${stamp()}.${r.markdown ? "md" : "txt"}`);
-    fs4.mkdirSync(path4.dirname(file2), { recursive: true });
-    fs4.writeFileSync(file2, body);
+    let rest;
+    try {
+      fs4.mkdirSync(path4.dirname(file2), { recursive: true });
+      fs4.writeFileSync(file2, body);
+      rest = `the whole text is in ${file2}`;
+    } catch (e) {
+      rest = `they could not be kept in ${file2} (${errWords(e)})`;
+    }
     shown = `${body.slice(0, max)}
 
-\u2026 ${body.length - max} more characters; the whole text is in ${file2}`;
+\u2026 ${body.length - max} more characters; ${rest}`;
   }
   const parts = [head.join("\n")];
   if (shown) parts.push(shown);
@@ -38288,6 +38826,25 @@ async function fetchUrl(b, o) {
 ${links.join("\n")}`);
   }
   return parts.join("\n\n");
+}
+var BROWSER_CAP = 256 * 2 ** 20;
+function errWords(e) {
+  const err = e;
+  return err?.code ? `${err.code}: ${err.message}` : e instanceof Error ? e.message : String(e);
+}
+function saveLine(saveTo, r) {
+  const asText = r.text ?? r.markdown;
+  if (asText === void 0) {
+    return `Nothing was saved to ${saveTo}${r.error ? ` (${r.error})` : ": no body came back"}.`;
+  }
+  const what = r.text !== void 0 ? "the response's text" : 'the page rendered as Markdown (mode "raw" saves the HTML as it came)';
+  const cut2 = r.truncated ? `; the browser cut ${r.text !== void 0 ? "the body" : "the page"} short, so this is not the whole of it` : "";
+  try {
+    fs4.writeFileSync(saveTo, asText, { flag: "wx" });
+    return `Saved ${what} to ${saveTo} (${Buffer.byteLength(asText)} bytes${cut2}).`;
+  } catch (e) {
+    return `The body could not be saved to ${saveTo} (${errWords(e)}); nothing was saved, and the response follows as it came.`;
+  }
 }
 async function recordStart(b, o) {
   if (b.recordingId) throw new ToolError("A recording is already running; call record_stop first.");
@@ -38460,7 +39017,9 @@ async function install(progress, signal) {
 }
 
 // src/server.ts
-var VERSION = "0.2.3";
+var VERSION = "0.3.0";
+var REPLAY = /^(true|1)$/i.test((process.env.CHROMAPHORE_REPLAY_OPTIONS ?? "").trim());
+var SETTING = `the plugin's "Replay options" setting (replay_options)`;
 var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
@@ -38468,6 +39027,8 @@ Loop: browser_open, then navigate. Every action (click, type, press, scroll, hov
 Elements are named by ids like a12 from the listings. Each page gets its own letters (a12 on one page, b12 on the next after a navigation, a reload or in another tab); a page restored by going back keeps its letters. An id stays valid while its element is on its page, across scrolls and later listings; one from a page the tab has left, or a gone element, is refused with the reason, never used on another element. Clicks move a real pointer along a curved path and scroll the element into view first; typing is human-paced, so long texts take seconds.
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
+
+Where there is no element to aim at, such as text an editor draws itself (Google Docs draws each page on a canvas), click, hover and drag also take a point of the view (x, y) in CSS pixels; a point read off view's image goes with its snapshot_id when view says the image is scaled. Typing can be a scripted burst (keys)${REPLAY ? ", wait for a time (not_before)" : ""} and check once, before the first key, that a given element has the focus (expect_focus).
 
 Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
 var server = new McpServer({ name: "browser", version: VERSION }, { instructions: INSTRUCTIONS });
@@ -38488,6 +39049,31 @@ async function guard(fn) {
   }
 }
 var id = external_exports.string().describe("An element id from a listing, such as a12.");
+var px = (what) => external_exports.number().describe(`${what}, in CSS pixels of the view; with snapshot_id, in pixels of that snapshot's image.`);
+var snapshotId = external_exports.string().optional().describe("The snapshot whose image the point was read off (s3): the point is then in that image's pixels, which view's note gives when they are not the view's CSS pixels. It must be of this tab's current page.");
+var quiet = external_exports.boolean().optional().describe("Answer without the changed elements (what opened on top, the focus and announcements stay); for pages such as Google Docs where every key changes much of the listing.");
+var notBefore = external_exports.union([external_exports.string(), external_exports.number()]).optional().describe("Wait until this time before the first key or paste: ISO 8601 with its zone (2026-11-16T21:50:00.000Z) or epoch ms; at most 15 minutes ahead. Clicking into id happens at once. The answer then says when the input ran.");
+var expectFocus = id.optional().describe(`Send nothing unless this element has the keyboard focus right before the first key (in Google Docs, the "Document content" textbox). Checked once, before the first key${REPLAY ? " and after any not_before wait" : ""}; a refusal names what has the focus. Not for an element in a frame of another site or origin, which the check cannot read.`);
+var replayOnly = (shape) => REPLAY ? shape : {};
+var inputOf = (shape) => REPLAY ? external_exports.object(shape) : external_exports.looseObject(shape);
+function refuseReplay(args, names) {
+  if (REPLAY) return;
+  const given = names.filter((n) => Object.hasOwn(args, n));
+  if (given.length) {
+    throw new ToolError(`Nothing was sent: ${given.join(" and ")} ${given.length > 1 ? "are" : "is"} available only with ${SETTING} turned on. Leave ${given.length > 1 ? "them" : "it"} out to act now.`);
+  }
+}
+var point = (args, verb) => {
+  const hasPoint = args.x !== void 0 || args.y !== void 0;
+  if (args.id && hasPoint) throw new ToolError(`${verb} an element (id) or a point (x and y), not both.`);
+  if (args.id) {
+    if (args.snapshot_id) throw new ToolError("snapshot_id is for a point (x and y) read off its image, not for an id.");
+    return null;
+  }
+  if (args.x === void 0 || args.y === void 0) throw new ToolError(`Say what to ${verb.toLowerCase()}: id, or x and y.`);
+  return { x: args.x, y: args.y };
+};
+var inView = (tab, p, snapshot) => p && snapshot ? pointsOfImage(tab, snapshot, [p])[0] : p;
 server.registerTool(
   "browser_install",
   {
@@ -38632,12 +39218,13 @@ server.registerTool(
   (args) => guard(async () => {
     const img = image(args.snapshot_id);
     const content = [{ type: "image", data: img.data, mimeType: img.mimeType }];
+    const notes = [];
     if (img.letters !== "a") {
-      content.push({
-        type: "text",
-        text: `The badges read a12 and so on; on this page the ids are ${img.letters}12 and so on (badge a5 is ${img.letters}5).`
-      });
+      notes.push(`The badges read a12 and so on; on this page the ids are ${img.letters}12 and so on (badge a5 is ${img.letters}5).`);
     }
+    const scale = scaleNote(img);
+    if (scale) notes.push(scale);
+    if (notes.length) content.push({ type: "text", text: notes.join("\n") });
     return { content };
   })
 );
@@ -38645,48 +39232,107 @@ server.registerTool(
   "click",
   {
     title: "Click",
-    description: "Scrolls the element into view, moves the pointer to it along a human path and clicks; answers with what the click led to and what changed. A covered element is refused with what covers it.",
+    description: "Scrolls the element into view, moves the pointer to it along a human path and clicks; answers with what the click led to and what changed. A covered element is refused with what covers it. Or clicks at a point of the view (x, y) where there is no element to aim at, such as between two characters in text an editor draws itself (Google Docs): whatever is at the point takes the click, and nothing scrolls.",
     inputSchema: {
-      id,
+      id: id.optional(),
+      x: px("A point to click instead of an element").optional(),
+      y: px("Its y").optional(),
+      snapshot_id: snapshotId,
       button: external_exports.enum(["left", "right", "middle"]).optional(),
-      count: external_exports.number().int().min(1).max(3).optional().describe("2 for a double click."),
-      modifiers: external_exports.array(external_exports.enum(["Alt", "Ctrl", "Meta", "Shift"])).optional().describe("Keys held during the click.")
+      count: external_exports.number().int().min(1).max(3).optional().describe("2 for a double click (a word), 3 for a triple (a paragraph)."),
+      modifiers: external_exports.array(external_exports.enum(["Alt", "Ctrl", "Meta", "Shift"])).optional().describe("Keys held during the click (Shift extends a selection)."),
+      quiet
     }
   },
-  (args) => guard(async () => click(await current().tab(), args.id, args))
+  (args) => guard(async () => {
+    const tab = await current().tab();
+    const p = inView(tab, point(args, "Click"), args.snapshot_id);
+    return p ? clickAt(tab, p, args) : click(tab, args.id, args);
+  })
 );
 server.registerTool(
   "hover",
   {
     title: "Hover",
-    description: "Moves the pointer onto the element and leaves it there; answers with what appeared (a menu, a tooltip).",
-    inputSchema: { id }
+    description: "Moves the pointer onto the element, or to a point of the view (x, y), and leaves it there; answers with what appeared (a menu, a tooltip).",
+    inputSchema: {
+      id: id.optional(),
+      x: px("A point to move to instead of an element").optional(),
+      y: px("Its y").optional(),
+      snapshot_id: snapshotId
+    }
   },
-  (args) => guard(async () => hover(await current().tab(), args.id))
+  (args) => guard(async () => {
+    const tab = await current().tab();
+    const p = inView(tab, point(args, "Hover"), args.snapshot_id);
+    return p ? hoverAt(tab, p) : hover(tab, args.id);
+  })
 );
 server.registerTool(
   "type",
   {
     title: "Type",
-    description: "Types text at a human pace (about 6 characters a second), clicking into the element first when an id is given. Rare typos are made and corrected at once, as a person would, except in fields where a wrong character matters (passwords, numbers, codes, card fields); exact: true turns them off.",
-    inputSchema: {
+    description: "Types text at a human pace (about 6 characters a second), clicking into the element first when an id is given. Rare typos are made and corrected at once, as a person would, except in fields where a wrong character matters (passwords, numbers, codes, card fields); exact: true turns them off. Or plays a scripted burst (keys): text, Backspaces, pauses and key presses in order, with no typos of its own. A newline in text is Enter, a tab character Tab.",
+    inputSchema: inputOf({
       id: id.optional(),
-      text: external_exports.string(),
+      text: external_exports.string().optional().describe(
+        REPLAY ? "What to type; with keys, what the burst must leave, checked before anything is sent: a plain Enter, Tab or Space press counts as the character it types and a plain Backspace as one bs; a burst that also presses keys whose effect the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z...) is refused." : "What to type. Give text or keys, not both."
+      ),
+      keys: external_exports.array(
+        external_exports.union([
+          external_exports.string(),
+          external_exports.object({ bs: external_exports.number().int().min(1).max(500) }).strict(),
+          external_exports.object({ pause_ms: external_exports.number().int().min(0).max(6e5) }).strict(),
+          external_exports.object({ press: external_exports.string() }).strict()
+        ])
+      ).optional().describe('A burst: strings to type, {"bs": n} for n Backspaces, {"pause_ms": n} to stop for n ms, {"press": "Ctrl+I"} for a key or shortcut (a formatting toggle; its key is a named key or one ASCII character). Every press is checked before anything is sent; a step that fails stops the burst, and the answer counts what went out before it.'),
       clear: external_exports.boolean().optional().describe("Select what the field holds first, so the text replaces it."),
       submit: external_exports.boolean().optional().describe("Press Enter after."),
-      exact: external_exports.boolean().optional().describe("No typos at all.")
-    }
+      exact: external_exports.boolean().optional().describe("No typos at all."),
+      ...replayOnly({
+        seed: external_exports.number().int().min(0).max(2 ** 47).optional().describe("The same seed, text and pace give the same rhythm of the typed strings (and the same gaps between a burst's steps). It does not fix the timing of key presses and Backspaces, which the browser times afresh each call.")
+      }),
+      speed: external_exports.number().min(0.25).max(3).optional().describe("Pace against this browser's typist: 2 is twice as fast, 0.5 half (default 1). The browser stops at about 110 words a minute, whatever the speed."),
+      ...replayOnly({ not_before: notBefore }),
+      expect_focus: expectFocus,
+      quiet
+    })
   },
-  (args) => guard(async () => type(await current().tab(), args))
+  (args, extra) => guard(async () => {
+    refuseReplay(args, ["not_before", "seed"]);
+    if (!REPLAY && args.text !== void 0 && args.keys) {
+      throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
+    }
+    return type(await current().tab(), {
+      ...args,
+      notBefore: parseNotBefore(args.not_before),
+      expectFocus: args.expect_focus,
+      signal: extra.signal
+    });
+  })
 );
 server.registerTool(
   "press",
   {
     title: "Press keys",
-    description: "Presses a key or a chord: Enter, Escape, Tab, ArrowDown, Ctrl+A, Shift+Tab, F5.",
-    inputSchema: { keys: external_exports.string(), times: external_exports.number().int().min(1).max(20).optional() }
+    description: "Presses a key or a chord: Enter, Escape, Tab, ArrowDown, Ctrl+A, Shift+Tab, Ctrl+Shift+Left, F5. The key is a named key or one ASCII character; type other characters with type. With times, again and again as a person does.",
+    inputSchema: inputOf({
+      keys: external_exports.string(),
+      times: external_exports.number().int().min(1).max(50).optional(),
+      ...replayOnly({ not_before: notBefore }),
+      expect_focus: expectFocus,
+      quiet
+    })
   },
-  (args) => guard(async () => press(await current().tab(), args.keys, args.times))
+  (args, extra) => guard(async () => {
+    refuseReplay(args, ["not_before"]);
+    return press(await current().tab(), args.keys, args.times, {
+      notBefore: parseNotBefore(args.not_before),
+      expectFocus: args.expect_focus,
+      quiet: args.quiet,
+      signal: extra.signal
+    });
+  })
 );
 server.registerTool(
   "scroll",
@@ -38697,7 +39343,8 @@ server.registerTool(
       direction: external_exports.enum(["up", "down", "left", "right"]),
       amount: external_exports.number().int().min(1).max(1e5).optional().describe("CSS pixels (default 400)."),
       id: id.optional(),
-      pace: external_exports.enum(["read", "flick"]).optional().describe("read (default) or flick for a long jump.")
+      pace: external_exports.enum(["read", "flick"]).optional().describe("read (default) or flick for a long jump."),
+      quiet
     }
   },
   (args) => guard(async () => scroll(await current().tab(), args))
@@ -38775,26 +39422,47 @@ server.registerTool(
   "drag",
   {
     title: "Drag",
-    description: "Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries.",
+    description: "Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries. Or drags from a point (from_x, from_y) to a point or an element, as a person selects text: press between two characters, let go between two others. The answer says what kind of drag the page made of it: a pointer drag selects; a native drag means the press landed on something the page drags (in an editor, text already selected), and that was dragged instead. A drag cannot start at a point inside a frame of another site.",
     inputSchema: {
-      from: id,
+      from: id.optional(),
+      from_x: px("A point to press at instead of an element").optional(),
+      from_y: px("Its y").optional(),
       to: id.optional(),
       slot: external_exports.enum(["on", "before", "after"]).optional(),
-      x: external_exports.number().optional(),
-      y: external_exports.number().optional(),
-      value: external_exports.number().optional().describe("A range input's value to set.")
+      x: px("A point to let go at").optional(),
+      y: px("Its y").optional(),
+      snapshot_id: snapshotId,
+      value: external_exports.number().optional().describe("A range input's value to set."),
+      modifiers: external_exports.array(external_exports.enum(["Alt", "Ctrl", "Meta", "Shift"])).optional().describe("Keys held through a drag from a point."),
+      quiet
     }
   },
-  (args) => guard(async () => drag(await current().tab(), args))
+  (args) => guard(async () => {
+    const tab = await current().tab();
+    if (!args.snapshot_id) return drag(tab, args);
+    const from = args.from_x !== void 0 && args.from_y !== void 0 ? { x: args.from_x, y: args.from_y } : null;
+    const to = args.x !== void 0 && args.y !== void 0 ? { x: args.x, y: args.y } : null;
+    if (!from && !to) throw new ToolError("snapshot_id is for points (from_x and from_y, or x and y) read off its image.");
+    const [f, t] = pointsOfImage(tab, args.snapshot_id, [from, to]);
+    return drag(tab, { ...args, ...f ? { from_x: f.x, from_y: f.y } : {}, ...t ? { x: t.x, y: t.y } : {} });
+  })
 );
 server.registerTool(
   "paste",
   {
     title: "Paste",
-    description: "Pastes text with Ctrl+V from the browser's own clipboard (the machine's clipboard is never touched), clicking into the element first when an id is given. Faster than type for long text; the page sees a real paste.",
-    inputSchema: { text: external_exports.string(), id: id.optional() }
+    description: "Pastes text with Ctrl+V from the browser's own clipboard (the machine's clipboard is never touched), clicking into the element first when an id is given. Faster than type for long text; the page sees a real paste of plain text, which an editor such as Google Docs gives the formatting at the caret.",
+    inputSchema: inputOf({ text: external_exports.string(), id: id.optional(), ...replayOnly({ not_before: notBefore }), expect_focus: expectFocus, quiet })
   },
-  (args) => guard(async () => paste(await current().tab(), args.text, args.id))
+  (args, extra) => guard(async () => {
+    refuseReplay(args, ["not_before"]);
+    return paste(await current().tab(), args.text, args.id, {
+      notBefore: parseNotBefore(args.not_before),
+      expectFocus: args.expect_focus,
+      quiet: args.quiet,
+      signal: extra.signal
+    });
+  })
 );
 server.registerTool(
   "fetch",
@@ -38808,7 +39476,8 @@ server.registerTool(
       headers: external_exports.record(external_exports.string(), external_exports.string()).optional(),
       body: external_exports.string().optional(),
       links: external_exports.boolean().optional().describe("Also list every link on the page."),
-      max_chars: external_exports.number().int().min(1e3).max(2e5).optional().describe("How much of the text to return (default 40,000); the rest is saved to a file.")
+      max_chars: external_exports.number().int().min(1e3).max(2e5).optional().describe("How much of the text to return (default 40,000); the rest is saved to a file."),
+      save_to: external_exports.string().optional().describe("A new file to save the body in (a download, such as a Google Docs export: /export?format=docx); without it a binary body goes to a file under the profile. A text body is saved as the response's text; an HTML page as the Markdown it is rendered to, unless mode is raw. A file that already exists, or a folder that cannot be made, is refused before the request goes out. A failure to write afterwards is said in the answer, which still carries the response.")
     },
     annotations: { readOnlyHint: true },
     _meta: { "anthropic/maxResultSizeChars": 25e4 }

@@ -4,7 +4,8 @@
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/dist/server.mjs"],
       "env": {
-        "CHROMAPHORE_BROWSER": "${user_config.browser_path}"
+        "CHROMAPHORE_BROWSER": "${user_config.browser_path}",
+        "CHROMAPHORE_REPLAY_OPTIONS": "${user_config.replay_options}"
       }
     }
   }

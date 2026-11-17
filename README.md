@@ -22,6 +22,8 @@ Windows only for now, like the browser.
 
 The second command downloads the latest browser release (about 1.6 GB, mostly fonts) to `%LOCALAPPDATA%\Chromaphore`. To use a Chromaphore you already have instead, set the plugin's **Browser** option in `/config` to its `chrome.exe`.
 
+The plugin's **Replay options** setting, off by default, adds three options for replaying input a pipeline of your own planned: a start time for `type`, `press` and `paste` (`not_before`), a typing seed (`seed`), and a check of a scripted burst against the text it must leave (`type` with `text` and `keys`). Most uses do not need them; with the setting off the tools do not offer them and refuse a call that passes them. A change to the setting takes effect when the plugin's server next starts: a new session, or a reconnect with `/mcp`.
+
 The plugin needs [Node.js](https://nodejs.org) 20 or later on `PATH`.
 
 Claude Code asks before every tool call of a new plugin. To let the browser tools run without asking, add to `permissions.allow` in `~/.claude/settings.json`:
@@ -51,18 +53,24 @@ Then `/reload-plugins` in sessions already running, change the allow rule to the
 | `tab_list` / `tab_new` / `tab_select` / `tab_close` | Tabs, including those the page opens |
 | `navigate` | A URL, back, forward or reload; answers with the settled page's listing |
 | `observe` / `view` | The listing, and its screenshot with each element outlined and labelled |
-| `click` / `hover` / `type` / `press` / `scroll` | Human-timed input; each answers with what changed |
+| `click` / `hover` / `type` / `press` / `scroll` | Human-timed input; each answers with what changed. Clicks and hovers also at a point of the view, for text an editor draws itself (Google Docs); typing as a scripted burst (Backspaces, pauses, shortcuts), and only if a given element has the focus when the first key goes out. With **Replay options** on: input at a set time, a typing seed, and a burst checked against its text |
 | `select` / `fill_date` / `pick_color` / `upload` | Native controls worked as a person works them: the dropdown opened and clicked, the date typed part by part, the colour picker, the file chooser answered |
-| `drag` | Native drag and drop, pointer-driven libraries and sliders, with a real carry |
+| `drag` | Native drag and drop, pointer-driven libraries and sliders, with a real carry; or from a point to a point, to select text |
 | `paste` | A real Ctrl+V from the browser's own clipboard (the machine's is never touched) |
 | `dialog` | Answers an alert, confirm or prompt |
-| `fetch` | Reads a URL through the browser without a tab: HTML as Markdown, anything else as text, or an API call from the site's own origin; reports bot challenges |
+| `fetch` | Reads a URL through the browser without a tab: HTML as Markdown, anything else as text, a download to a file, or an API call from the site's own origin; reports bot challenges |
 | `record_start` / `record_stop` | Records all the browser's traffic from inside it: HAR with bodies, a request index, a summary |
 | `fingerprint` | What the browser shows sites about the machine for this launch |
 | `eval_js` | Evaluates an expression in the page |
 | `screenshot` | Saves a PNG to a file |
 
 Requires Chromaphore 156 or later.
+
+## Skills
+
+- `chromaphore:browser`: how to drive the tools well; Claude loads it before the first `browser_open` of a task.
+- `chromaphore:install`: installs or updates the browser (`/chromaphore:install`).
+- `chromaphore:replay`: how to use the replay options; it applies only with the **Replay options** setting on.
 
 ## Where things live
 
@@ -77,7 +85,7 @@ The browser is started outside Claude Code's process tree and closes itself clea
 - `.claude-plugin/marketplace.json`: the repository is its own marketplace.
 - `plugin/`: what Claude Code installs: the manifest, the MCP server config, the bundled server (`dist/`), the skills.
 - `server/`: the server's TypeScript source; `npm install`, then `node build.mjs` bundles it into `plugin/dist/` and writes `plugin/THIRD_PARTY_NOTICES.md`, `plugin/LICENSE` and `plugin/NOTICE`.
-  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `second_document.mjs` clicks by listing id on a tab's later pages (after a navigation, and after the page reloads itself) and checks an id from a page left, another tab, a closed tab or a closed browser is refused; `id_checks.mjs` checks the refusals an id gets before an action (changed text, behind a layer, never shown, a page loading); `ids_unit.mjs` checks the page letters and the settle line's element names without a browser; `migrate.mjs` moves a pre-0.2.0 install (`%LOCALAPPDATA%\Chromeleon`) to the new folder, with a browser of it running and then without, and works the list of releases left to delete; `install.mjs` runs `browser_install`.
+  - `server/test/`: `smoke.mjs` and `phase2.mjs` drive the bundled server over stdio through every tool on local test pages (`node test/smoke.mjs <chrome.exe>`); `claude_session.mjs` loads the plugin into a real `claude -p --plugin-dir` session and checks the browser closes cleanly afterwards (with `--temp`, that its temporary profile is deleted); `temp_profile.mjs` checks temporary profiles are deleted after `browser_close` and after the session ends; `second_document.mjs` clicks by listing id on a tab's later pages (after a navigation, and after the page reloads itself) and checks an id from a page left, another tab, a closed tab or a closed browser is refused; `id_checks.mjs` checks the refusals an id gets before an action (changed text, behind a layer, never shown, a page loading); `ids_unit.mjs` checks the page letters and the settle line's element names without a browser; `points_and_bursts.mjs` covers, with the replay options off, clicks, hovers and drags at points (a drag from a point onto an element below the view, with Shift held, and a press on selected text answered as a native drag), bursts (a non-ASCII shortcut refused before any key), `expect_focus`, `quiet` and `speed`; `focus_cancel_fetch.mjs`, with them off, the focus check through shadow roots and frames (with no key reaching the page on a refusal), cancelling a burst, `fetch`'s `save_to` (a folder that cannot be made, an HTML page saved as Markdown) and drags from a point whose target leaves the page on the press or that the page takes as a native drag; `docs_live.mjs` runs the point, burst, drag, focus and export tools on a real Google Docs document, given a signed-in profile, its seed and a scratch document's URL (run by hand; it types into that document); `replay_options.mjs` the setting: with it off (unset, empty, `false`, or not substituted) no schema, description or instruction offers `not_before`, `seed` or the text check, and a call passing them, or `text` with `keys`, is refused with no key reaching the page; with it on the schemas list them and they work (`not_before` on `type`, `press` and `paste`, its refusals, the `expect_focus` element looked up again after the wait, a cancel during the wait, the text check, one seed one rhythm); `view_scale.mjs` points read off a scaled screenshot, for clicks, hovers and drags; `bursts_unit.mjs` the burst's text check, its keys, its seeded gaps and its account of a failed step, without a browser; `migrate.mjs` moves a pre-0.2.0 install (`%LOCALAPPDATA%\Chromeleon`) to the new folder, with a browser of it running and then without, and works the list of releases left to delete; `install.mjs` runs `browser_install`.
   - `server/spikes/`: the experiments the design rests on (the pipe, shutdown, automation signals, window values, ECH). They take the browser from `CHROMAPHORE_BROWSER` or the installed release.
 - `docs/DESIGN.md`: why the server works the way it does: the pipe, the launch outside the process tree, every launch switch, the automation-signal results, how actions settle.
 
