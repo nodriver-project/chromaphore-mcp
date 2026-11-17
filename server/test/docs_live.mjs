@@ -2,8 +2,10 @@
 // canvas: a click at a point moves the caret, a scripted burst with a typo
 // fixed and an italic word lands at its time and shows in the export, a drag
 // between two points selects a word that typing then replaces, expect_focus
-// refuses keys while the title box has the focus, and the docx export is
-// saved. It types into the document it is given: use a scratch document, in a
+// refuses keys while the title box has the focus (it clicks into the title
+// and presses Escape there), and the docx export is saved. It types into the
+// document it is given, and a failed step can leave stray text in it or in
+// its title: use a scratch document, in a
 // profile signed in to an account that can edit it. Not run by anything else.
 // Usage: node test/docs_live.mjs <profile folder> <fingerprint seed> <document url>
 import fs from 'node:fs';
@@ -85,9 +87,10 @@ await new Promise((res) => setTimeout(res, 2500));
 text = await exported();
 check(/\nBurst2: Hello world and italics\.\s*$/.test(text), `typing replaced the dragged selection: ${JSON.stringify(text.slice(-50))}`);
 
-// 4. expect_focus: with the focus moved to the Gemini box, nothing is sent.
+// 4. expect_focus: with the focus moved to the title box, nothing is sent.
 r = await call('observe', { offscreen: 'none' }, 0);
 const title = /^(\w+\d+) textbox "Rename"/m.exec(r.text)?.[1];
+if (!title) throw new Error('the title box ("Rename") is not listed; stopping before any key');
 await call('click', { id: title, quiet: true });
 r = await call('type', { text: 'must not land', exact: true, expect_focus: docBox });
 check(/^Nothing sent: .* does not have the keyboard focus/.test(r.text), 'expect_focus refused keys while the title box had the focus');

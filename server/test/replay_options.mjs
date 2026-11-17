@@ -100,7 +100,13 @@ for (const value of [...OFF, 'true']) {
     .map((e) => path.join(e.parentPath ?? e.path, e.name));
   const naming = /not_before|replay|must leave|text check|typing seed|seed\W+on\W+type/i;
   const hits = files.flatMap((f) =>
-    fs.readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (naming.test(line) ? [`${path.relative(skillsDir, f)}:${i + 1}: ${line.trim().slice(0, 100)}`] : [])),
+    fs.readFileSync(f, 'utf8').split('\n').flatMap((line, i) =>
+      // A line that names a seed must be about the fingerprint seed of
+      // browser_open, the only seed there is with the setting off.
+      naming.test(line) || (/\bseed\b/i.test(line) && !/fingerprint|browser_open/i.test(line))
+        ? [`${path.relative(skillsDir, f)}:${i + 1}: ${line.trim().slice(0, 100)}`]
+        : [],
+    ),
   );
   check(
     files.some((f) => path.relative(skillsDir, f) === path.join('browser', 'SKILL.md')) && hits.length === 0,

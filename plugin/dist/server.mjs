@@ -38685,8 +38685,8 @@ async function dragFromPoint(tab, from, opts) {
   );
   if (r.x !== void 0) tab.pointer = { x: r.x, y: r.y };
   if (r.outcome !== "dropped" && r.outcome !== "released") {
-    const inFrame = r.outcome === "covered" && /in another frame/.test(r.reason ?? "");
-    return dragFailed(r) + (inFrame ? " A drag cannot start at a point inside a frame of another site; a click at a point there works." : "");
+    const grabInFrame = r.outcome === "covered" && /(in|from) another frame is on top of where/.test(r.reason ?? "");
+    return dragFailed(r) + (grabInFrame ? " The start point is inside a frame of another site or process, and the browser did not grab there; a click at a point there works." : "");
   }
   const said = [`Dragged from ${at(from)} to ${end} (${r.kind} drag, ${r.outcome}).`];
   if (r.kind === "native") {
@@ -39020,7 +39020,7 @@ async function install(progress, signal) {
 var VERSION = "0.3.0";
 var REPLAY = /^(true|1)$/i.test((process.env.CHROMAPHORE_REPLAY_OPTIONS ?? "").trim());
 var SETTING = `the plugin's "Replay options" setting (replay_options)`;
-var REPLAY_GUIDE = `The replay options are on, for input whose time or text a pipeline of your own planned. not_before (type, press, paste) holds the first key or paste until a time at most 15 minutes ahead: place the caret first (the click into id happens at once; click a point in an earlier call), so only the keys wait. Everything that can be refused (the time, the burst's steps and text check, the expect_focus id) is refused before the wait, never after it; the focus itself is checked after the wait, right before the first key, and cancelling during the wait sends nothing. seed on type: the same seed, text and speed repeat the rhythm of the typed strings and the gaps between a burst's steps, but not the timing of key presses and Backspaces, which the browser draws afresh each call. type with both keys and text checks, before any key, that the burst leaves exactly text: a plain Enter, Tab or Space press counts as its character and a plain Backspace as one bs; a burst with presses the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z) or with Backspaces reaching before its start is refused, so leave text out to play it unchecked.`;
+var REPLAY_GUIDE = `The replay options are on, for input whose time or text a pipeline of your own planned. not_before (type, press, paste) holds the first key or paste until a time at most 15 minutes ahead: place the caret first (the click into id happens at once; click a point in an earlier call), so only the keys wait. Everything that can be refused (the time, the burst's steps and text check, the expect_focus id) is refused before the wait; the focus itself is checked after the wait, right before the first key, and cancelling during the wait sends nothing. seed on type: the same seed, text and speed repeat the rhythm of the typed strings and the gaps between a burst's steps, but not the timing of key presses and Backspaces, which the browser draws afresh each call. type with both keys and text checks, before any key, that the burst leaves exactly text: a plain Enter, Tab or Space press counts as its character and a plain Backspace as one bs; a burst with presses the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z) or with Backspaces reaching before its start is refused, so leave text out to play it unchecked.`;
 var INSTRUCTIONS = `Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
 Loop: browser_open, then navigate. Every action (click, type, press, scroll, hover, navigate) waits for the page to settle and answers with what changed, so you rarely need observe after one. Call observe for a full listing of the page; call view only when the text is not enough (it costs about 1,500 tokens).
@@ -39425,7 +39425,7 @@ server.registerTool(
   "drag",
   {
     title: "Drag",
-    description: "Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries. Or drags from a point (from_x, from_y) to a point or an element, as a person selects text: press between two characters, let go between two others. The answer says what kind of drag the page made of it: a pointer drag selects; a native drag means the press landed on something the page drags (in an editor, text already selected), and that was dragged instead. A drag cannot start at a point inside a frame of another site.",
+    description: "Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries. Or drags from a point (from_x, from_y) to a point or an element, as a person selects text: press between two characters, let go between two others. The answer says what kind of drag the page made of it: a pointer drag selects; a native drag means the press landed on something the page drags (in an editor, text already selected), and that was dragged instead. A drag between two points inside a frame of another site is refused; a click at a point there works.",
     inputSchema: {
       from: id.optional(),
       from_x: px("A point to press at instead of an element").optional(),

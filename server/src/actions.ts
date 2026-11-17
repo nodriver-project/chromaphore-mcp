@@ -1321,11 +1321,13 @@ async function dragFromPoint(
   );
   if (r.x !== undefined) tab.pointer = { x: r.x, y: r.y };
   if (r.outcome !== 'dropped' && r.outcome !== 'released') {
-    // Measured 2026-11-17: the browser's drag cannot grab at a point inside a
-    // frame of another site (a click there works) and answers covered, naming
-    // the frame's own content as what is on top.
-    const inFrame = r.outcome === 'covered' && /in another frame/.test(r.reason ?? '');
-    return dragFailed(r) + (inFrame ? ' A drag cannot start at a point inside a frame of another site; a click at a point there works.' : '');
+    // Measured 2026-11-17: a drag between two points inside a frame of
+    // another site is answered covered, naming the frame's own content as
+    // what is "on top of where the element to grab would be grabbed" (a
+    // click there works). Only that wording gets the hint: a covered
+    // target is also told with "in another frame", and is another matter.
+    const grabInFrame = r.outcome === 'covered' && /(in|from) another frame is on top of where/.test(r.reason ?? '');
+    return dragFailed(r) + (grabInFrame ? ' The start point is inside a frame of another site or process, and the browser did not grab there; a click at a point there works.' : '');
   }
   const said = [`Dragged from ${at(from)} to ${end} (${r.kind} drag, ${r.outcome}).`];
   if (r.kind === 'native') {
