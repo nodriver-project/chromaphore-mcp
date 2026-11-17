@@ -1,15 +1,18 @@
 // The replay options setting (docs/DESIGN.md, "General and replay options").
 // Off (unset, empty, "false", or the unsubstituted ${user_config...} text):
 // type, press and paste list no not_before and type no seed, nothing the
-// agent reads mentions them or the burst text check, fetch keeps its
+// agent reads (instructions, schemas, no file under plugin/skills) mentions
+// them or the burst text check, fetch keeps its
 // readOnlyHint; on a page, type with text and keys is refused, and a call
 // passing not_before or seed anyway is refused, with no key reaching the page
-// before or after its time. On ("true"): the schemas list them, and the
+// before or after its time. On ("true"): the schemas list them, the
+// instructions say how to use each of the three, and the
 // options work: not_before holds the first key (type, press, paste), a
 // time without a zone or past 15 minutes is refused, the expect_focus id is
 // resolved again after the wait, a cancel during the wait sends nothing, the
 // burst text check refuses before any key, and one seed gives one rhythm.
 // Usage: node test/replay_options.mjs [server.mjs]
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,14 +64,48 @@ for (const value of [...OFF, 'true']) {
   if (on) {
     check(props('type').includes('not_before') && props('type').includes('seed') && props('press').includes('not_before') && props('paste').includes('not_before'), `[on] the schemas list not_before and type's seed (${listed})`);
     check(/not_before/.test(instructions) && /must leave/.test(textDesc), '[on] the instructions name not_before and type\'s text describes the check');
+    // The guidance that was the replay skill, one clause per point it must make.
+    const guide = {
+      'not_before: at most 15 minutes ahead': /not_before[^.]*at most 15 minutes ahead/,
+      'not_before: place the caret first, only the keys wait': /place the caret first[^.]*only the keys wait/,
+      'not_before: refused before the wait': /refused before the wait/,
+      'not_before: the focus checked after the wait': /focus itself is checked after the wait/,
+      'not_before: a cancel during the wait sends nothing': /cancelling during the wait sends nothing/,
+      'seed: repeats the rhythm of the typed strings': /seed on type[^.]*repeat the rhythm of the typed strings/,
+      'seed: not the timing of presses and Backspaces': /not the timing of key presses and Backspaces/,
+      'text check: keys and text checked before any key': /both keys and text checks, before any key, that the burst leaves exactly text/,
+      'text check: what Enter, Tab, Space and Backspace count as': /Enter, Tab or Space press counts as its character and a plain Backspace as one bs/,
+      'text check: what it refuses': /presses the check cannot follow[^.]*Backspaces reaching before its start is refused/,
+      'text check: leave text out to play unchecked': /leave text out to play it unchecked/,
+    };
+    const missing = Object.entries(guide).filter(([, re]) => !re.test(instructions)).map(([k]) => k);
+    check(missing.length === 0, `[on] the instructions carry the guidance for all three options${missing.length ? ` (missing: ${missing.join('; ')})` : ''}`);
   } else {
     check(['type', 'press', 'paste'].every((n) => !props(n).includes('not_before')) && !props('type').includes('seed'), `[${label(value)}] no schema lists not_before or seed (${listed})`);
     check(['type', 'press', 'paste'].every((n) => !/not_before/.test(words(n))) && !/seed/.test(words('type')), `[${label(value)}] no description of type, press or paste mentions not_before or seed`);
     check(!/must leave|checked before/.test(textDesc) && /not both/.test(textDesc), `[${label(value)}] type's text does not describe the check (${JSON.stringify(textDesc)})`);
-    check(!/not_before|must leave|text check/.test(instructions) && !/\bseed\b/.test(instructions), `[${label(value)}] the instructions mention none of the three`);
+    check(!/not_before|must leave|text check|replay/i.test(instructions) && !/\bseed\b/.test(instructions), `[${label(value)}] the instructions mention none of the three`);
   }
   check(tool('fetch')?.annotations?.readOnlyHint === true, `[${label(value)}] fetch keeps its readOnlyHint (${JSON.stringify(tool('fetch')?.annotations ?? null)})`);
   await client.close();
+}
+
+// 1b. The skills. A skill's name and description are listed to every agent,
+// setting or not, so no file under plugin/skills may name the replay options
+// (their guidance is in the instructions, sent only with the setting on).
+{
+  const skillsDir = path.resolve(here, '../../plugin/skills');
+  const files = fs.readdirSync(skillsDir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.join(e.parentPath ?? e.path, e.name));
+  const naming = /not_before|replay|must leave|text check|typing seed|seed\W+on\W+type/i;
+  const hits = files.flatMap((f) =>
+    fs.readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (naming.test(line) ? [`${path.relative(skillsDir, f)}:${i + 1}: ${line.trim().slice(0, 100)}`] : [])),
+  );
+  check(
+    files.some((f) => path.relative(skillsDir, f) === path.join('browser', 'SKILL.md')) && hits.length === 0,
+    `[off] no file under plugin/skills mentions not_before or the replay options (${files.length} files read${hits.length ? `; ${hits.join(' | ')}` : ''})`,
+  );
 }
 
 // 2. On a page.
