@@ -7,7 +7,10 @@
 // a drag from a point whose drop target leaves the page on the press is ended
 // by the browser, the button let go where it went down, and the answer says so.
 // Run with the replay options setting off (test/replay_options.mjs cancels a
-// wait for not_before). Also: no refusal lets a key reach the page; an
+// wait for not_before). On a browser newer than release 2.0.0 the browser
+// reads the focus itself: an element in a closed shadow root, in a frame of
+// another site and in a frame of another origin is then checked for real
+// (keys go through when it has the focus; a refusal names the inner field). Also: no refusal lets a key reach the page; an
 // element in a frame the check cannot
 // read (a data: frame, a sandboxed one) is refused with that reason; save_to
 // in a folder that cannot be made is refused before the request; an HTML page
@@ -66,6 +69,7 @@ const open = document.getElementById('openHost').attachShadow({ mode: 'open' });
 open.innerHTML = '<input aria-label="Shadow field">';
 const closed = document.getElementById('closedHost').attachShadow({ mode: 'closed' });
 closed.innerHTML = '<input aria-label="Hidden field">';
+window.__hidden = closed.querySelector('input');
 document.getElementById('design').addEventListener('load', (e) => { e.target.contentDocument.designMode = 'on'; });
 window.__keys = [];
 document.addEventListener('keydown', (e) => window.__keys.push(e.key), true);
@@ -111,6 +115,8 @@ const base = `http://127.0.0.1:${site.address().port}`;
 const env = { ...process.env };
 delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
+// The browser under test: CHROMAPHORE_TEST_BROWSER, else the installed release.
+if (process.env.CHROMAPHORE_TEST_BROWSER) env.CHROMAPHORE_BROWSER = process.env.CHROMAPHORE_TEST_BROWSER;
 delete env.CHROMAPHORE_REPLAY_OPTIONS;
 console.log('replay_options: off (CHROMAPHORE_REPLAY_OPTIONS unset)');
 const client = new Client({ name: 'focus-test', version: '0' });
@@ -130,6 +136,8 @@ async function call(name, args = {}, signal) {
 const js = async (expression) => JSON.parse((await call('eval_js', { expression: `JSON.stringify(${expression})` })).text);
 
 await call('browser_open', { profile: 'temp', headless: true, url: base });
+const modern = !/predates/.test((await call('clipboard')).text);
+console.log(`  browser: ${modern ? 'newer than release 2.0.0: the browser reads the focus' : 'release 2.0.0 or older: the script check'}`);
 // The frames load after the listing; list again once they have.
 await new Promise((r) => setTimeout(r, 1500));
 let r = await call('observe', { offscreen: 'full' });
@@ -180,12 +188,22 @@ const shadowValue = await js(`document.getElementById('openHost').shadowRoot.que
 check(!/Nothing sent/.test(r.text) && shadowValue === 'in', `an input in an open shadow root passed the check (${JSON.stringify(shadowValue)})`);
 
 // Inside a closed shadow root the innermost element script reaches is the
-// host: the refusal names it, which shows why.
+// host: the refusal names it, which shows why. The browser's own reading
+// sees the field itself: the keys go through, and a refusal names it.
 await call('click', { id: ids.hidden, quiet: true });
 await noKeys();
 r = await call('type', { text: 'x', exact: true, expect_focus: ids.hidden });
 seen = await keysSeen();
-check(/does not have the keyboard focus; div "Closed box" #closedHost has it/.test(r.text) && seen.none, `in a closed shadow root the refusal names the host; no key reached the page (${JSON.stringify(seen)})`);
+if (!modern) {
+  check(/does not have the keyboard focus; div "Closed box" #closedHost has it/.test(r.text) && seen.none, `in a closed shadow root the refusal names the host; no key reached the page (${JSON.stringify(seen)})`);
+} else {
+  const hiddenValue = await js('window.__hidden.value');
+  check(!/Nothing sent/.test(r.text) && hiddenValue === 'x', `an input in a closed shadow root passed the browser's check (${JSON.stringify(hiddenValue)})`);
+  await noKeys();
+  r = await call('type', { text: 'y', exact: true, expect_focus: ids.main });
+  seen = await keysSeen();
+  check(/does not have the keyboard focus; input "Hidden field" has it/.test(r.text) && seen.none, `a refusal names the field inside the closed shadow root (${r.text.split('\n')[0]}; ${JSON.stringify(seen)})`);
+}
 
 // An editor whose editable is a frame's <body> (contenteditable body, and
 // designMode): the body, listed as a textbox of its own, has the focus, and
@@ -208,7 +226,21 @@ const probe = farKeys;
 await noKeys();
 r = await call('type', { text: 'x', exact: true, expect_focus: ids.far });
 seen = await keysSeen();
-check(probe >= 1 && r.isError && /frame of another site.*Leave expect_focus out/.test(r.text) && seen.none, `expect_focus on an element in a frame of another site is refused; no key reached it (probe key counted ${probe}, ${JSON.stringify(seen)})`);
+if (!modern) {
+  check(probe >= 1 && r.isError && /frame of another site.*Leave expect_focus out/.test(r.text) && seen.none, `expect_focus on an element in a frame of another site is refused; no key reached it (probe key counted ${probe}, ${JSON.stringify(seen)})`);
+} else {
+  check(probe >= 1 && !r.isError && !/Nothing sent/.test(r.text) && seen.far === 1 && seen.main === 0, `expect_focus on the focused field of a frame of another site is checked by the browser and the key goes there (${JSON.stringify(seen)})`);
+  await call('click', { id: ids.main, quiet: true });
+  await noKeys();
+  r = await call('type', { text: 'x', exact: true, expect_focus: ids.far });
+  seen = await keysSeen();
+  check(/^Nothing sent: .* does not have the keyboard focus; input "Main field" #main has it/.test(r.text) && seen.none, `and refused when the main field has the focus (${r.text.split('\n')[0]}; ${JSON.stringify(seen)})`);
+  await noKeys();
+  await call('click', { id: ids.far, quiet: true });
+  r = await call('type', { text: 'x', exact: true, expect_focus: ids.main });
+  seen = await keysSeen();
+  check(/^Nothing sent: .* does not have the keyboard focus; input "Far field" has it/.test(r.text) && seen.none, `a refusal names the field of the frame of another site that has the focus (${r.text.split('\n')[0]})`);
+}
 
 // A frame of the same process that the check's world cannot read (an opaque
 // origin): refused with that reason, not as gone.
@@ -224,6 +256,10 @@ for (const [name, fid] of [['data:', dataField], ['sandboxed', sandField]]) {
   r = await call('type', { text: 'x', exact: true, expect_focus: fid });
   seen = await keysSeen();
   console.log(`  ${name} frame: ${r.text.split('\n')[0]}`);
+  if (modern) {
+    check(frameProbe >= 1 && !/Nothing sent/.test(r.text) && !r.isError && seen.frames === 1 && seen.main === 0, `expect_focus in the ${name} frame is checked by the browser and the key goes there (probe ${frameProbe}, ${JSON.stringify(seen)})`);
+    continue;
+  }
   const readable = /cannot read the frame .* is in .*Leave expect_focus out/.test(r.text);
   const otherProcess = /frame of another site/.test(r.text);
   check(frameProbe >= 1 && (readable || otherProcess) && !/no longer on the page/.test(r.text) && seen.none, `expect_focus in the ${name} frame is refused for the frame, not as gone (${readable ? 'same process, unreadable' : otherProcess ? 'another process' : 'neither'}); no key reached it (probe ${frameProbe}, ${JSON.stringify(seen)})`);

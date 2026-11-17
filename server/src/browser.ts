@@ -49,6 +49,10 @@ const BASE_SWITCHES = [
   '--cancel-payment-request',
   // A clipboard of its own: the machine's is the user's.
   '--private-clipboard',
+  // The text and fills 2D canvases show are recorded for Page.agentCanvasText
+  // (off in the browser by default; only draws made with it on are recorded,
+  // so it is on from the launch). A browser that predates it ignores it.
+  '--enable-canvas-text-record',
   // A network-error page stays as it is instead of reloading itself unseen.
   '--disable-auto-reload',
   // Tabs the agent is not looking at keep running at full speed.
@@ -84,6 +88,10 @@ export class Tab {
   dialog: Dialog | null = null;
   notices: string[] = [];
   closed = false;
+  // The canvas text lines of the tab's last read, with the letters of the
+  // page read; null when that page showed none and no editor module knew it,
+  // so actions there read no canvas (actions.ts, canvasAfter).
+  canvas: { letters: string; lines: string[] } | null = null;
   private dialogWaiters: (() => void)[] = [];
 
   constructor(
@@ -170,6 +178,11 @@ export class Browser {
   seed: number | null = null;
   bundleActive: boolean | null = null;
   recordingId: string | null = null;
+  // Whether the browser has the commands newer than release 2.0.0 (canvas
+  // text, the browser's own field reading, bursts as one command, its
+  // clipboard): one probe on the first tab's session (probeModern).
+  modern = false;
+  private probed = false;
 
   private constructor(
     readonly conn: Connection,
@@ -266,6 +279,10 @@ export class Browser {
     const { targetId } = await this.conn.send('Target.createTarget', { url, newWindow });
     const tab = await this.attach(targetId);
     this.activeTargetId = targetId;
+    if (!this.probed) {
+      this.modern = await probeModern(tab);
+      this.probed = true;
+    }
     return tab;
   }
 
@@ -576,6 +593,24 @@ export function describeEvent(ev: any): string {
     default:
       return ev.kind;
   }
+}
+
+// A browser that predates a command answers -32601 "'Input.readFocusedField'
+// wasn't found" (measured 2026-11-17 on release 156.0.8078.47, the installed
+// 1.0.0; the build tree's browser carries the same version, so the version
+// cannot tell them apart). Any other answer means the command is there.
+async function probeModern(tab: Tab): Promise<boolean> {
+  try {
+    await tab.send('Input.readFocusedField', {}, 10_000);
+    return true;
+  } catch (e) {
+    return !(e instanceof CdpError && e.code === -32601 && /wasn't found/.test(e.message));
+  }
+}
+
+// The one sentence a feature of the newer browser gets on an older one.
+export function predates(what: string): string {
+  return `This browser predates ${what}: it needs a Chromaphore build newer than release 2.0.0. Nothing was done.`;
 }
 
 // Retries a Page command while the session has not yet moved to a new

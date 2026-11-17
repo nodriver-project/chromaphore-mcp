@@ -11,7 +11,7 @@ import { CdpError } from './cdp.js';
 import { checkInstall, install } from './install.js';
 import { moveFromChromeleon, removePendingReleases, sweepPageCounts } from './paths.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 // The replay options (not_before, type's seed, and a burst's check against
 // the text it must leave) need values only a caller's own pipeline makes, so
@@ -25,7 +25,7 @@ const SETTING = 'the plugin\'s "Replay options" setting (replay_options)';
 // How to use the replay options, sent only with the setting on. It lives
 // here rather than in a skill because a skill's description is listed to
 // every agent, setting or not (docs/DESIGN.md, "General and replay options").
-const REPLAY_GUIDE = `The replay options are on, for input whose time or text a pipeline of your own planned. not_before (type, press, paste) holds the first key or paste until a time at most 15 minutes ahead: place the caret first (the click into id happens at once; click a point in an earlier call), so only the keys wait. Everything that can be refused (the time, the burst's steps and text check, the expect_focus id) is refused before the wait; the focus itself is checked after the wait, right before the first key, and cancelling during the wait sends nothing. seed on type: the same seed, text and speed repeat the rhythm of the typed strings and the gaps between a burst's steps, but not the timing of key presses and Backspaces, which the browser draws afresh each call. type with both keys and text checks, before any key, that the burst leaves exactly text: a plain Enter, Tab or Space press counts as its character and a plain Backspace as one bs; a burst with presses the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z) or with Backspaces reaching before its start is refused, so leave text out to play it unchecked.`;
+const REPLAY_GUIDE = `The replay options are on, for input whose time or text a pipeline of your own planned. not_before (type, press, paste) holds the first key or paste until a time at most 15 minutes ahead: place the caret first (the click into id happens at once; click a point in an earlier call), so only the keys wait. Everything that can be refused (the time, the burst's steps and text check, the expect_focus id) is refused before the wait; the focus itself is checked after the wait, right before the first key, and cancelling during the wait sends nothing. seed on type: the same seed, text and speed repeat the rhythm of the typed strings and the gaps between a burst's steps, but not the timing of key presses and Backspaces, which the browser draws afresh each call; on a build newer than release 2.0.0 a burst is one schedule, and the seed fixes all of it. type with both keys and text checks, before any key, that the burst leaves exactly text: a plain Enter, Tab or Space press counts as its character and a plain Backspace as one bs; a burst with presses the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z) or with Backspaces reaching before its start is refused, so leave text out to play it unchecked. On a build newer than release 2.0.0 type also takes dry_run, which plans the text or burst and sends nothing (not with id, clear, submit, not_before or expect_focus), answering its length from first key to last and the seed that gives that schedule, and key_log, a file each call appends one JSON line of its key events to; with not_before or key_log the answer times the first key down and the last key up, and every type answer says the seed used.`;
 
 const INSTRUCTIONS =`Tools for driving the Chromaphore browser, a Chromium build whose input is timed like a person's and whose fingerprint is set per launch. Use them to test or debug a site, reproduce a bug with real input, or read pages through a real browser.
 
@@ -35,11 +35,11 @@ Elements are named by ids like a12 from the listings. Each page gets its own let
 
 A JavaScript dialog blocks the page until answered with dialog. The listing marks elements outside the view and covered elements; act on covered ones only after closing what covers them.
 
-Where there is no element to aim at, such as text an editor draws itself (Google Docs draws each page on a canvas), click, hover and drag also take a point of the view (x, y) in CSS pixels; a point read off view's image goes with its snapshot_id when view says the image is scaled. Typing can be a scripted burst (keys)${REPLAY ? ', wait for a time (not_before)' : ''} and check once, before the first key, that a given element has the focus (expect_focus).
+Where there is no element to aim at, such as text an editor draws itself (Google Docs draws each page on a canvas), the listing ends with the text the canvases in view show, and click, hover and drag aim by it (text_before, text_after; drag's select). They also take a point of the view (x, y) in CSS pixels, the way to aim on a browser without canvas text; a point read off view's image goes with its snapshot_id when view says the image is scaled. Typing can be a scripted burst (keys)${REPLAY ? ', wait for a time (not_before)' : ''} and go only to an element that has the focus (expect_focus).
 ${REPLAY ? `
 ${REPLAY_GUIDE}
 ` : ''}
-Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
+Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. clipboard reads or sets the browser's own clipboard. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
 
 const server = new McpServer({ name: 'browser', version: VERSION }, { instructions: INSTRUCTIONS });
 let browser: Browser | null = null;
@@ -82,7 +82,7 @@ const notBefore = z
   .describe('Wait until this time before the first key or paste: ISO 8601 with its zone (2026-11-16T21:50:00.000Z) or epoch ms; at most 15 minutes ahead. Clicking into id happens at once. The answer then says when the input ran.');
 const expectFocus = id
   .optional()
-  .describe(`Send nothing unless this element has the keyboard focus right before the first key (in Google Docs, the "Document content" textbox). Checked once, before the first key${REPLAY ? ' and after any not_before wait' : ''}; a refusal names what has the focus. Not for an element in a frame of another site or origin, which the check cannot read.`);
+  .describe(`Send nothing unless this element has the keyboard focus right before the first key (in Google Docs, the "Document content" textbox)${REPLAY ? ', checked after any not_before wait' : ''}; a refusal names what has the focus. On a Chromaphore newer than release 2.0.0, type also stops when the focus leaves it midway and says what went out; older builds check once and cannot read a frame of another site or origin.`);
 // The replay options of a tool, only with the setting on. Typed as always
 // there, so the handlers read them as they would with it on; with it off
 // they are refused before they are read (refuseReplay).
@@ -99,6 +99,14 @@ function refuseReplay(args: Record<string, unknown>, names: string[]): void {
     throw new ToolError(`Nothing was sent: ${given.join(' and ')} ${given.length > 1 ? 'are' : 'is'} available only with ${SETTING} turned on. Leave ${given.length > 1 ? 'them' : 'it'} out to act now.`);
   }
 }
+const textBefore = z.string().optional().describe('Aim by the canvas text in view: the place where this text ends (with text_after, where text_after begins). It must read so in exactly one place; whitespace counts as one space.');
+const textAfter = z.string().optional().describe('The text that begins at the place.');
+// A place by text, or null when none is given; with an id or a point refused.
+const textPlace = (args: { id?: string; x?: number; y?: number; text_before?: string; text_after?: string }, verb: string): act.TextPlace | null => {
+  if (args.text_before === undefined && args.text_after === undefined) return null;
+  if (args.id || args.x !== undefined || args.y !== undefined) throw new ToolError(`${verb} an element (id), a point (x and y) or a place in the text (text_before, text_after), one of them.`);
+  return { before: args.text_before, after: args.text_after };
+};
 const point = (args: { id?: string; x?: number; y?: number; snapshot_id?: string }, verb: string): act.Point | null => {
   const hasPoint = args.x !== undefined || args.y !== undefined;
   if (args.id && hasPoint) throw new ToolError(`${verb} an element (id) or a point (x and y), not both.`);
@@ -321,9 +329,11 @@ server.registerTool(
   {
     title: 'Click',
     description:
-      'Scrolls the element into view, moves the pointer to it along a human path and clicks; answers with what the click led to and what changed. A covered element is refused with what covers it. Or clicks at a point of the view (x, y) where there is no element to aim at, such as between two characters in text an editor draws itself (Google Docs): whatever is at the point takes the click, and nothing scrolls.',
+      'Scrolls the element into view, moves the pointer to it along a human path and clicks; answers with what the click led to and what changed. A covered element is refused with what covers it. In text a canvas shows (Google Docs), clicks at a place in it (text_before, text_after): between two characters it puts the caret there. Or clicks at a point of the view (x, y). Whatever is at a place or point takes the click, and nothing scrolls.',
     inputSchema: {
       id: id.optional(),
+      text_before: textBefore,
+      text_after: textAfter,
       x: px('A point to click instead of an element').optional(),
       y: px('Its y').optional(),
       snapshot_id: snapshotId,
@@ -336,6 +346,8 @@ server.registerTool(
   (args) =>
     guard(async () => {
       const tab = await current().tab();
+      const place = textPlace(args, 'Click');
+      if (place) return act.clickText(tab, place, args);
       const p = inView(tab, point(args, 'Click'), args.snapshot_id);
       return p ? act.clickAt(tab, p, args) : act.click(tab, args.id!, args);
     }),
@@ -345,9 +357,11 @@ server.registerTool(
   'hover',
   {
     title: 'Hover',
-    description: 'Moves the pointer onto the element, or to a point of the view (x, y), and leaves it there; answers with what appeared (a menu, a tooltip).',
+    description: 'Moves the pointer onto the element, to a place in the canvas text in view (text_before, text_after), or to a point of the view (x, y), and leaves it there; answers with what appeared (a menu, a tooltip).',
     inputSchema: {
       id: id.optional(),
+      text_before: textBefore,
+      text_after: textAfter,
       x: px('A point to move to instead of an element').optional(),
       y: px('Its y').optional(),
       snapshot_id: snapshotId,
@@ -356,6 +370,8 @@ server.registerTool(
   (args) =>
     guard(async () => {
       const tab = await current().tab();
+      const place = textPlace(args, 'Hover over');
+      if (place) return act.hoverText(tab, place);
       const p = inView(tab, point(args, 'Hover'), args.snapshot_id);
       return p ? act.hoverAt(tab, p) : act.hover(tab, args.id!);
     }),
@@ -398,7 +414,7 @@ server.registerTool(
           .min(0)
           .max(2 ** 47)
           .optional()
-          .describe("The same seed, text and pace give the same rhythm of the typed strings (and the same gaps between a burst's steps). It does not fix the timing of key presses and Backspaces, which the browser times afresh each call."),
+          .describe("The same seed, text and pace give the same rhythm of the typed strings (and the same gaps between a burst's steps). It does not fix the timing of key presses and Backspaces, which the browser times afresh each call, except on a build newer than release 2.0.0, where it fixes the whole schedule and the answer says the seed used when none was given."),
       }),
       speed: z
         .number()
@@ -409,11 +425,21 @@ server.registerTool(
       ...replayOnly({ not_before: notBefore }),
       expect_focus: expectFocus,
       quiet,
+      ...replayOnly({
+        dry_run: z
+          .boolean()
+          .optional()
+          .describe('Plan the text or burst and send nothing: the answer says how long it would take and the seed that gives that schedule. Not with id, clear, submit, not_before or expect_focus.'),
+        key_log: z
+          .string()
+          .optional()
+          .describe('A file to append this call\'s key events to, one JSON line per call (start, seed, length, typos, stop, the events with their times); its folder is made if missing.'),
+      }),
     }),
   },
   (args, extra) =>
     guard(async () => {
-      refuseReplay(args, ['not_before', 'seed']);
+      refuseReplay(args, ['not_before', 'seed', 'dry_run', 'key_log']);
       if (!REPLAY && args.text !== undefined && args.keys) {
         throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
       }
@@ -422,6 +448,9 @@ server.registerTool(
         notBefore: act.parseNotBefore(args.not_before),
         expectFocus: args.expect_focus,
         signal: extra.signal,
+        dryRun: args.dry_run,
+        keyLog: args.key_log,
+        replay: REPLAY,
       });
     }),
 );
@@ -554,9 +583,12 @@ server.registerTool(
   {
     title: 'Drag',
     description:
-      'Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries. Or drags from a point (from_x, from_y) to a point or an element, as a person selects text: press between two characters, let go between two others. The answer says what kind of drag the page made of it: a pointer drag selects; a native drag means the press landed on something the page drags (in an editor, text already selected), and that was dragged instead. A drag between two points inside a frame of another site is refused; a click at a point there works.',
+      'Drags an element with a real pointer: presses, carries (scrolling under itself where needed) and lets go. Drop onto another element (to, with slot before/after/on for sortable lists), onto a point of the view (x, y), or set a slider (value). Works for native drag and drop and for pointer-driven libraries. Or selects text a canvas shows (select, with text_before and text_after around it when it reads so in more than one place): presses before it and lets go after it. Or drags from a point (from_x, from_y) to a point or an element. The answer says what kind of drag the page made of it: a pointer drag selects; a native drag means the press landed on something the page drags (in an editor, text already selected), and that was dragged instead.',
     inputSchema: {
       from: id.optional(),
+      select: z.string().optional().describe('Text in the canvas text in view to select by a drag, from its start to its end.'),
+      text_before: z.string().optional().describe('With select: the text right before it.'),
+      text_after: z.string().optional().describe('With select: the text right after it.'),
       from_x: px('A point to press at instead of an element').optional(),
       from_y: px('Its y').optional(),
       to: id.optional(),
@@ -565,13 +597,19 @@ server.registerTool(
       y: px('Its y').optional(),
       snapshot_id: snapshotId,
       value: z.number().optional().describe("A range input's value to set."),
-      modifiers: z.array(z.enum(['Alt', 'Ctrl', 'Meta', 'Shift'])).optional().describe('Keys held through a drag from a point.'),
+      modifiers: z.array(z.enum(['Alt', 'Ctrl', 'Meta', 'Shift'])).optional().describe('Keys held through a drag from a point or a selection by text.'),
       quiet,
     },
   },
   (args) =>
     guard(async () => {
       const tab = await current().tab();
+      if (args.select !== undefined) {
+        const other = ['from', 'from_x', 'from_y', 'to', 'x', 'y', 'snapshot_id', 'value', 'slot'].filter((k) => (args as any)[k] !== undefined);
+        if (other.length) throw new ToolError(`select is a drag of its own: leave out ${other.join(', ')}.`);
+        return act.dragText(tab, { select: args.select, before: args.text_before, after: args.text_after }, args);
+      }
+      if (args.text_before !== undefined || args.text_after !== undefined) throw new ToolError('text_before and text_after go with select: the text to select.');
       if (!args.snapshot_id) return act.drag(tab, args);
       const from = args.from_x !== undefined && args.from_y !== undefined ? { x: args.from_x, y: args.from_y } : null;
       const to = args.x !== undefined && args.y !== undefined ? { x: args.x, y: args.y } : null;
@@ -599,6 +637,20 @@ server.registerTool(
         signal: extra.signal,
       });
     }),
+);
+
+server.registerTool(
+  'clipboard',
+  {
+    title: 'Clipboard',
+    description:
+      "Reads the browser's own clipboard, shared by its tabs (the machine's clipboard is never touched): the text, with line breaks shown as \\n (the browser stores CRLF on Windows for its pastes and a page's copy), its length, and whether HTML is there. With set, first puts that text there without pasting; Ctrl+V then pastes it.",
+    inputSchema: {
+      set: z.string().optional().describe('Text to put on the clipboard first.'),
+      html: z.boolean().optional().describe('Also show the HTML, up to 20,000 characters.'),
+    },
+  },
+  (args) => guard(async () => act.clipboard(await current().tab(), args)),
 );
 
 server.registerTool(

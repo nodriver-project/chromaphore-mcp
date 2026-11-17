@@ -11,9 +11,17 @@
 // time without a zone or past 15 minutes is refused, the expect_focus id is
 // resolved again after the wait, a cancel during the wait sends nothing, the
 // burst text check refuses before any key, and one seed gives one rhythm.
+// On a newer browser, with the setting on: dry_run plans and sends nothing,
+// and a burst typed with its seed plays the plan; key_log appends a line per
+// call (its folder made; a failure to write told, the rest kept); the time
+// line comes from the timeline; the seed used is said; dry_run with id,
+// clear, submit, not_before or expect_focus is refused by name. On an older
+// browser dry_run and key_log are refused in one sentence, then one SKIP.
+// dry_run and key_log are refused by name with the setting off.
 // Usage: node test/replay_options.mjs [server.mjs]
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -33,6 +41,7 @@ async function start(value) {
   const env = { ...process.env };
   delete env.CLAUDE_CODE_SESSION_ID;
   delete env.CHROMAPHORE_BROWSER;
+  if (process.env.CHROMAPHORE_TEST_BROWSER) env.CHROMAPHORE_BROWSER = process.env.CHROMAPHORE_TEST_BROWSER;
   delete env.CHROMAPHORE_REPLAY_OPTIONS;
   if (value !== undefined) env.CHROMAPHORE_REPLAY_OPTIONS = value;
   const client = new Client({ name: 'replay-test', version: '0' });
@@ -63,6 +72,7 @@ for (const value of [...OFF, 'true']) {
   const textDesc = tool('type')?.inputSchema?.properties?.text?.description ?? '';
   if (on) {
     check(props('type').includes('not_before') && props('type').includes('seed') && props('press').includes('not_before') && props('paste').includes('not_before'), `[on] the schemas list not_before and type's seed (${listed})`);
+    check(props('type').includes('dry_run') && props('type').includes('key_log'), `[on] type's schema lists dry_run and key_log (${props('type').join(',')})`);
     check(/not_before/.test(instructions) && /must leave/.test(textDesc), '[on] the instructions name not_before and type\'s text describes the check');
     // The guidance that was the replay skill, one clause per point it must make.
     const guide = {
@@ -77,12 +87,18 @@ for (const value of [...OFF, 'true']) {
       'text check: what Enter, Tab, Space and Backspace count as': /Enter, Tab or Space press counts as its character and a plain Backspace as one bs/,
       'text check: what it refuses': /presses the check cannot follow[^.]*Backspaces reaching before its start is refused/,
       'text check: leave text out to play unchecked': /leave text out to play it unchecked/,
+      'dry_run: plans and sends nothing': /dry_run, which plans the text or burst and sends nothing/,
+      'dry_run: what it cannot go with': /not with id, clear, submit, not_before or expect_focus/,
+      'dry_run: the seed that gives that schedule': /seed that gives that schedule/,
+      'key_log: one JSON line per call': /key_log, a file each call appends one JSON line of its key events to/,
+      'the times from the first key down to the last key up': /with not_before or key_log the answer times the first key down and the last key up/,
+      'the seed used': /says the seed used/,
     };
     const missing = Object.entries(guide).filter(([, re]) => !re.test(instructions)).map(([k]) => k);
     check(missing.length === 0, `[on] the instructions carry the guidance for all three options${missing.length ? ` (missing: ${missing.join('; ')})` : ''}`);
   } else {
-    check(['type', 'press', 'paste'].every((n) => !props(n).includes('not_before')) && !props('type').includes('seed'), `[${label(value)}] no schema lists not_before or seed (${listed})`);
-    check(['type', 'press', 'paste'].every((n) => !/not_before/.test(words(n))) && !/seed/.test(words('type')), `[${label(value)}] no description of type, press or paste mentions not_before or seed`);
+    check(['type', 'press', 'paste'].every((n) => !props(n).includes('not_before')) && !['seed', 'dry_run', 'key_log'].some((k) => props('type').includes(k)), `[${label(value)}] no schema lists not_before, seed, dry_run or key_log (${listed}; type: ${props('type').join(',')})`);
+    check(['type', 'press', 'paste'].every((n) => !/not_before|dry_run|key_log/.test(words(n))) && !/seed/.test(words('type')), `[${label(value)}] no description of type, press or paste mentions not_before, seed, dry_run or key_log`);
     check(!/must leave|checked before/.test(textDesc) && /not both/.test(textDesc), `[${label(value)}] type's text does not describe the check (${JSON.stringify(textDesc)})`);
     check(!/not_before|must leave|text check|replay/i.test(instructions) && !/\bseed\b/.test(instructions), `[${label(value)}] the instructions mention none of the three`);
   }
@@ -192,6 +208,13 @@ const nothing = (s) => s[0] === '' && s[1] === 0 && s[2] === 0;
   check(r.isError && /seed is available only with/.test(r.text) && nothing(s), `[off] type with seed is refused, naming the setting; no key sent (${JSON.stringify(s)})`);
   r = await d.call('type', { text: 'both', not_before: Date.now() + 2000, seed: 7 });
   check(r.isError && /not_before and seed are available only/.test(r.text), '[off] both at once are named');
+  for (const extra of [{ dry_run: true }, { key_log: 'keys.jsonl' }]) {
+    await d.call('eval_js', { expression: reset });
+    r = await d.call('type', { text: 'planned', exact: true, ...extra });
+    s = await state(d);
+    const name = Object.keys(extra)[0];
+    check(r.isError && new RegExp(`^Nothing was sent: ${name} is available only with the plugin's "Replay options" setting`).test(r.text) && nothing(s), `[off] type with ${name} is refused, naming the setting; no key sent (${JSON.stringify(s)})`);
+  }
   // The general features still type.
   await d.call('eval_js', { expression: reset });
   r = await d.call('type', { keys: ['ab', { bs: 1 }, 'c'], quiet: true });
@@ -314,6 +337,74 @@ const nothing = (s) => s[0] === '' && s[1] === 0 && s[2] === 0;
   const most = (a, b) => Math.max(...a.map((g, i) => Math.abs(g - b[i])));
   check(g1.length === 15 && g1.length === g2.length && most(g1, g2) <= 2, `[on] the same seed gave the same gaps (largest difference ${most(g1, g2)} ms)`);
   check(most(g1, g3) > 10, `[on] another seed gave other gaps (largest difference ${most(g1, g3)} ms)`);
+
+  // dry_run, key_log, the times from the timeline and the seed said: a
+  // browser newer than release 2.0.0 only.
+  const modern = !/predates/.test((await call('clipboard')).text);
+  if (!modern) {
+    for (const extra of [{ dry_run: true }, { key_log: path.join(os.tmpdir(), 'never.jsonl') }]) {
+      await call('eval_js', { expression: reset });
+      r = await call('type', { text: 'planned', exact: true, ...extra });
+      s = await state({ js });
+      check(r.isError && /^This browser predates (planning keys without sending them \(dry_run\)|logging the key events \(key_log\)): it needs a Chromaphore build newer than release 2\.0\.0\. Nothing was done\.$/.test(r.text) && nothing(s), `[on] ${Object.keys(extra)[0]} on this browser is refused in one sentence (${r.text})`);
+    }
+    r = await call('type', { text: 'abc', exact: true, quiet: true });
+    check(!r.isError && !/^Seed /m.test(r.text), '[on] this browser answers no seed line');
+    console.log('SKIP dry_run, key_log, the key times from the timeline and the seed said: this browser predates the timeline of Input.dispatchKeystrokes (a Chromaphore build newer than release 2.0.0 has it)');
+  } else {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-keylog-'));
+    const log = path.join(dir, 'made', 'keys.jsonl');
+    const lines = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+    const burst = ['Plan ahead', { bs: 2 }, 'ad', { pause_ms: 300 }, '!'];
+    // A plan, nothing sent.
+    await call('click', { id: notes, quiet: true });
+    await call('eval_js', { expression: reset });
+    r = await call('type', { keys: burst, dry_run: true, key_log: log });
+    s = await state({ js });
+    const planned = /^Planned, nothing sent: from its first key down to its last key up it would take [\d.]+ s \((\d+) ms[^)]*\), (\d+) key event\(s\)/.exec(r.text);
+    const seedOf = /^Seed (\d+) \(typos (?:not )?allowed\): pass it back as seed/m.exec(r.text);
+    check(!r.isError && !!planned && !!seedOf && nothing(s), `[on] dry_run plans the burst, says its length and seed, and sends nothing (${JSON.stringify(s)}; ${r.text.split('\n').slice(0, 2).join(' | ')})`);
+    const plan = lines();
+    check(plan.length === 1 && plan[0].dryRun === true && plan[0].seed === Number(seedOf?.[1]) && plan[0].events.length === Number(planned?.[2]) && new RegExp(`Logged ${plan[0].events.length} key event\\(s\\) as planned to `).test(r.text), `[on] dry_run with key_log logs the plan, its folder made (${plan.length} line(s))`);
+    // The seed passed back gives that schedule.
+    r = await call('type', { keys: burst, seed: Number(seedOf?.[1]), key_log: log, quiet: true });
+    s = await state({ js });
+    const real = lines()[1];
+    const sameKeys = !!real && real.events.length === plan[0].events.length && real.events.every((e, i) => e.key === plan[0].events[i].key && e.event === plan[0].events[i].event && Math.abs(e.timeMs - plan[0].events[i].timeMs) < 20);
+    check(!r.isError && s[0] === 'Plan ahead!' && sameKeys, `[on] typing with the seed dry_run gave plays that schedule: the same key events within 20 ms (${real?.events.length} events; ${JSON.stringify(s[0])})`);
+    check(!!real && typeof real.startEpochMs === 'number' && real.start === new Date(real.startEpochMs).toISOString() && real.seed === Number(seedOf?.[1]) && typeof real.durationMs === 'number' && typeof real.typosAllowed === 'boolean' && real.typos === 0 && !real.stopped && !real.dryRun, `[on] the key log's line has the start, seed, length, typo decision and count (${JSON.stringify({ ...real, events: real?.events.length })})`);
+    check(new RegExp(`Logged ${real?.events.length} key event\\(s\\) to .*keys\\.jsonl\\.`).test(r.text) && /^Seed \d+ \(typos (not )?allowed\)/m.test(r.text), '[on] the answer says how many events went to which file, and the seed');
+    // The time line from the timeline, against the page's own clock.
+    await call('eval_js', { expression: reset });
+    const when3 = Date.now() + 2500;
+    r = await call('type', { text: 'timed', exact: true, not_before: new Date(when3).toISOString(), quiet: true });
+    const t = /^Ran from (\S+) \(the first key down, (\d+) ms after not_before\) to (\S+) \(the last key up\), (\d+) ms\.$/m.exec(r.text);
+    const firstKey = (await js('window.__keys[0]?.t ?? 0'));
+    const from = Date.parse(t?.[1] ?? ''), to = Date.parse(t?.[3] ?? '');
+    check(!!t && from >= when3 && Math.abs(from - when3 - Number(t[2])) <= 1 && Math.abs(firstKey - from) <= 50 && to - from === Number(t[4]) && to > from, `[on] with not_before the answer times the first key down and the last key up from the timeline (${t?.[0]}; the page saw the first key ${firstKey - from} ms off)`);
+    // The seed said for a call that gave none, and the one given.
+    r = await call('type', { text: 'x', exact: true, quiet: true });
+    const drawn = /^Seed (\d+) \(typos (not )?allowed\)/m.exec(r.text);
+    r = await call('type', { text: 'y', exact: true, seed: 4242, quiet: true });
+    check(!!drawn && Number(drawn[1]) > 0 && /^Seed 4242 \(typos (not )?allowed\)/m.test(r.text), `[on] the answer says the seed used, drawn (${drawn?.[1]}) or given`);
+    // What dry_run cannot go with, refused before anything moves; the text
+    // check still applies.
+    await call('eval_js', { expression: reset });
+    r = await call('type', { id: notes, text: 'x', dry_run: true, clear: true, submit: true, expect_focus: notes, not_before: Date.now() + 5000 });
+    s = await state({ js });
+    const mouse2 = await js('window.__mouse');
+    check(r.isError && r.text === 'dry_run sends nothing and waits for nothing, so id, clear, submit, not_before, expect_focus cannot go with it. Nothing was done.' && nothing(s) && mouse2.down === 0, `[on] dry_run with id, clear, submit, not_before and expect_focus is refused, naming them (${r.text})`);
+    r = await call('type', { keys: ['ab'], text: 'abc', dry_run: true });
+    check(/^Nothing typed: keys leave "ab", not text "abc"/.test(r.text), '[on] dry_run keeps the text check');
+    // A log that cannot be written is a line of the answer, which keeps the rest.
+    await call('eval_js', { expression: reset });
+    const blocked = path.join(dir, 'a-file');
+    fs.writeFileSync(blocked, 'x');
+    r = await call('type', { text: 'kept', exact: true, key_log: path.join(blocked, 'keys.jsonl'), quiet: true });
+    s = await state({ js });
+    check(!r.isError && /^Typed 4 character\(s\)/.test(r.text) && /^The key log could not be written to .*keys\.jsonl: /m.test(r.text) && s[0] === 'kept', `[on] a key log that cannot be written is told, and the answer keeps the rest (${JSON.stringify(s[0])})`);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 
   await call('browser_close');
   await client.close();

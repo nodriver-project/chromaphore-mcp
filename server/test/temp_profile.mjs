@@ -15,7 +15,7 @@ const env = { ...process.env };
 // Not the session this test runs in: its page count would carry over
 // between runs (browser.ts, nextPageNumber).
 delete env.CLAUDE_CODE_SESSION_ID;
-if (process.argv[2]) env.CHROMAPHORE_BROWSER = process.argv[2];
+if (process.argv[2] || process.env.CHROMAPHORE_TEST_BROWSER) env.CHROMAPHORE_BROWSER = process.argv[2] || process.env.CHROMAPHORE_TEST_BROWSER;
 else delete env.CHROMAPHORE_BROWSER;
 
 let failures = 0;

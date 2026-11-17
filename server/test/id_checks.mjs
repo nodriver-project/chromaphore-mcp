@@ -44,6 +44,8 @@ const env = { ...process.env };
 // between runs (browser.ts, nextPageNumber).
 delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
+// The browser under test: CHROMAPHORE_TEST_BROWSER, else the installed release.
+if (process.env.CHROMAPHORE_TEST_BROWSER) env.CHROMAPHORE_BROWSER = process.env.CHROMAPHORE_TEST_BROWSER;
 const client = new Client({ name: 'id-checks-test', version: '0' });
 await client.connect(new StdioClientTransport({ command: process.execPath, args: [serverPath], env, stderr: 'inherit' }));
 

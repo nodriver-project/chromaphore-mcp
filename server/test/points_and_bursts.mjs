@@ -54,6 +54,8 @@ const base = `http://127.0.0.1:${site.address().port}`;
 const env = { ...process.env };
 delete env.CLAUDE_CODE_SESSION_ID;
 delete env.CHROMAPHORE_BROWSER;
+// The browser under test: CHROMAPHORE_TEST_BROWSER, else the installed release.
+if (process.env.CHROMAPHORE_TEST_BROWSER) env.CHROMAPHORE_BROWSER = process.env.CHROMAPHORE_TEST_BROWSER;
 delete env.CHROMAPHORE_REPLAY_OPTIONS;
 console.log('replay_options: off (CHROMAPHORE_REPLAY_OPTIONS unset)');
 const client = new Client({ name: 'points-test', version: '0' });
