@@ -37202,8 +37202,11 @@ var Browser = class _Browser {
     const tab = await this.attach(targetId);
     this.activeTargetId = targetId;
     if (!this.probed) {
-      this.modern = await probeModern(tab);
-      this.probed = true;
+      const modern = await probeModern(tab);
+      if (modern !== null) {
+        this.modern = modern;
+        this.probed = true;
+      }
     }
     return tab;
   }
@@ -37455,7 +37458,8 @@ async function probeModern(tab) {
     await tab.send("Input.readFocusedField", {}, 1e4);
     return true;
   } catch (e) {
-    return !(e instanceof CdpError && e.code === -32601 && /wasn't found/.test(e.message));
+    if (!(e instanceof CdpError)) return null;
+    return !(e.code === -32601 && /wasn't found/.test(e.message));
   }
 }
 function predates(what) {
@@ -37515,7 +37519,7 @@ async function launchOutsideTree(exe, args, tempProfile) {
 }
 
 // src/canvas.ts
-var FORMAT = /[‪-‮⁦-⁩‎‏]/;
+var FORMAT = /[\u202A-\u202E\u2066-\u2069\u200E\u200F]/;
 async function readCanvas(tab) {
   return tab.send("Page.agentCanvasText", { inView: true }, 3e4);
 }
@@ -37643,7 +37647,7 @@ function canvasChange(before, lines) {
     ...added.map((t) => `  + ${shown(t)}`)
   ];
 }
-var WHITESPACE = /[\s   ]/;
+var WHITESPACE = /\s/;
 function flowOf(lines) {
   const flow = [];
   let prev = null;
@@ -37666,7 +37670,7 @@ function flowOf(lines) {
   }
   return flow;
 }
-var normalise = (s) => [...s].filter((c) => !FORMAT.test(c)).join("").replace(/[\s   ]+/g, " ");
+var normalise = (s) => [...s].filter((c) => !FORMAT.test(c)).join("").replace(/\s+/g, " ");
 function placeAt(flow, b) {
   if (b < flow.length && (flow[b].ch !== " " || b === 0)) return flow[b].start;
   return flow[b - 1].end;
@@ -37821,6 +37825,9 @@ function selectionLine(m, fills) {
       parts.set(box.top, { y: box.top, text: "", pastEnd: true, from: 0, to: 0 });
       continue;
     }
+    if (line.line.pieces.some((p) => p.run.direction === "rtl" || p.run.bidi)) {
+      return ["Docs selection: on right-to-left text, which this does not read as text. Copy it (Ctrl+C) and read the clipboard."];
+    }
     const pastEnd = box.right > line.end + 0.15 * line.endHeight;
     const from = nearest(line.spots, box.left).at;
     const to = pastEnd ? line.line.text.length : nearest(line.spots, box.right).at;
@@ -37856,7 +37863,9 @@ function docsLines(lines, fills, state) {
   }
   if (selection.length) out.push(...selectionLine(m, selection));
   if (!out.length) {
-    out.push("Docs: no caret and no selection show (the document does not have the keyboard focus, or they are out of view).");
+    out.push(
+      state.focused === false ? "Docs: no caret and no selection show, and the document does not have the keyboard focus." : state.focused === true ? "Docs: no caret and no selection show in view (the document has the keyboard focus: they are out of view)." : "Docs: no caret and no selection show (the document does not have the keyboard focus, or they are out of view)."
+    );
   }
   return out;
 }
@@ -38716,6 +38725,9 @@ async function releaseIfDown(tab, r) {
   try {
     const u = await withPointer(tab, (pp) => tab.send("Input.moveTo", { x: p.x, y: p.y, ...pp, end: { action: "release" } }, 3e4));
     if (u.x !== void 0) tab.pointer = { x: u.x, y: u.y };
+    if (u.outcome !== "released") {
+      return `The drag ended with its button still down, and letting it go was answered ${u.outcome}${u.reason ? ` (${u.reason})` : ""}.`;
+    }
     return `The drag ended with its button still down; it was let go at ${at2(p)}.`;
   } catch (e) {
     const why = e instanceof CdpError ? e.message : e instanceof Error ? e.message : String(e);
@@ -38922,6 +38934,7 @@ async function type(tab, opts) {
     if (m.cancelled) return [m.cancelled, ...logged ? [logged] : []].join("\n");
     outcome = m.outcome ?? outcome;
     said.push(...m.said);
+    if (signal?.aborted) return [...said, "Stopped on request after the keys; nothing after them was sent."].join("\n");
     if (opts.submit && !m.stopped) {
       await chord("Enter");
       said.push("Pressed Enter.");
@@ -39131,11 +39144,16 @@ function stepAccount(r, step, who) {
       listed
     };
   }
+  if (step.kind === "press") {
+    const went = (r.timeline ?? []).some((e) => e.step === cur && e.event === "down");
+    return { part: went ? "its key went down: the press was made, so do not press it again" : null, uncertain: null, listed: /* @__PURE__ */ new Set() };
+  }
   if (step.kind !== "text") return { part: null, uncertain: null, listed: /* @__PURE__ */ new Set() };
-  const total = step.text.length;
+  const letters = [...step.text];
+  const total = letters.length;
   const chars = [...new Set(unsure.map((e) => e.charIndex))].sort((a, b) => a - b);
   const part = `${n} of ${total} character(s) had their key go down (they reached a field)`;
-  const uncertain = chars.length ? `Of them, the browser lists ${chars.length} as uncertain (${chars.map((i) => JSON.stringify(step.text[i] ?? "?")).join(", ")}): they may have gone to the field that took the focus, so ${who} holds between ${n - chars.length} and ${n} of them.` : n ? `The browser lists none of them as uncertain: all ${n} went to ${who}.` : null;
+  const uncertain = chars.length ? `Of them, the browser lists ${chars.length} as uncertain (${chars.map((i) => JSON.stringify(letters[i] ?? "?")).join(", ")}): they may have gone to the field that took the focus, so ${who} holds between ${n - chars.length} and ${n} of them.` : n ? `The browser lists none of them as uncertain: all ${n} went to ${who}.` : null;
   return { part, uncertain, listed };
 }
 function keyTimesLine(notBefore2, r) {
@@ -39143,8 +39161,8 @@ function keyTimesLine(notBefore2, r) {
   const downs = tl.filter((e) => e.event === "down");
   const ups = tl.filter((e) => e.event === "up");
   if (typeof r?.startEpochMs !== "number" || !downs.length || !ups.length) return null;
-  const first = r.startEpochMs + Math.min(...downs.map((e) => e.timeMs));
-  const last = r.startEpochMs + Math.max(...ups.map((e) => e.timeMs));
+  const first = r.startEpochMs + downs.reduce((m, e) => Math.min(m, e.timeMs), Infinity);
+  const last = r.startEpochMs + ups.reduce((m, e) => Math.max(m, e.timeMs), -Infinity);
   const late2 = notBefore2 === void 0 ? "" : `, ${Math.round(first - notBefore2)} ms after not_before`;
   return `Ran from ${iso(first)} (the first key down${late2}) to ${iso(last)} (the last key up), ${Math.round(last - first)} ms.`;
 }
@@ -39177,7 +39195,7 @@ async function planOnly(tab, o) {
   const tl = r.timeline ?? [];
   const downs = tl.filter((e) => e.event === "down").map((e) => e.timeMs);
   const ups = tl.filter((e) => e.event === "up").map((e) => e.timeMs);
-  const span = downs.length && ups.length ? Math.max(...ups) - Math.min(...downs) : 0;
+  const span = downs.length && ups.length ? ups.reduce((m, t) => Math.max(m, t), -Infinity) - downs.reduce((m, t) => Math.min(m, t), Infinity) : 0;
   const whole = typeof r.durationMs === "number" && Math.abs(r.durationMs - span) > 1 ? `; the plan's whole length with its pauses is ${Math.round(r.durationMs)} ms` : "";
   const typos = r.typosCorrected ? `, ${r.typosCorrected} typo(s) made and corrected` : "";
   const lines = [

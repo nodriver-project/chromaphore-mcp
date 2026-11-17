@@ -10,6 +10,9 @@ export interface Pt {
 
 export interface Run {
   text: string;
+  // ltr or rtl, and whether the run holds more than one direction.
+  direction?: string;
+  bidi?: boolean;
   baseline: { start: Pt; end: Pt };
   width: number;
   advances: number[];
@@ -63,7 +66,7 @@ export interface Line {
 
 // Bidi controls and marks: Google Docs wraps every string it draws in
 // U+202D ... U+202C.
-const FORMAT = /[‪-‮⁦-⁩‎‏]/;
+const FORMAT = /[\u202A-\u202E\u2066-\u2069\u200E\u200F]/;
 
 export async function readCanvas(tab: Tab): Promise<CanvasRead> {
   return tab.send('Page.agentCanvasText', { inView: true }, 30_000);
@@ -233,7 +236,7 @@ interface FlowChar {
   end: At;
 }
 
-const WHITESPACE = /[\s   ]/;
+const WHITESPACE = /\s/;
 
 function flowOf(lines: Line[]): FlowChar[] {
   const flow: FlowChar[] = [];
@@ -259,7 +262,7 @@ function flowOf(lines: Line[]): FlowChar[] {
   return flow;
 }
 
-export const normalise = (s: string) => [...s].filter((c) => !FORMAT.test(c)).join('').replace(/[\s   ]+/g, ' ');
+export const normalise = (s: string) => [...s].filter((c) => !FORMAT.test(c)).join('').replace(/\s+/g, ' ');
 
 // The place at flow boundary b: before the character after it, unless that
 // is a space (the caller's text puts the space after the place), then after

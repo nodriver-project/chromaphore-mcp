@@ -43,7 +43,7 @@ const refusedWith = (fn, re) => {
 // A run drawn left to right at (x, y), 10 px per character, a 16 px box;
 // U+202D … U+202C around its text, as Google Docs draws.
 function run(text, x, y, extra = {}) {
-  const raw = '‭' + text + '‬';
+  const raw = '\u202d' + text + '\u202c';
   const advances = [];
   for (let i = 0; i <= raw.length; i++) advances.push(Math.max(0, Math.min(i - 1, text.length)) * 10);
   const w = text.length * 10;

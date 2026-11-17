@@ -188,6 +188,11 @@ function selectionLine(m: ReturnType<typeof modelOf>, fills: { f: Fill; focused:
       parts.set(box.top, { y: box.top, text: '', pastEnd: true, from: 0, to: 0 });
       continue;
     }
+    // A right-to-left run's boundaries run the other way along the line,
+    // which this reading by left and right edges does not follow.
+    if (line.line.pieces.some((p) => p.run.direction === 'rtl' || p.run.bidi)) {
+      return ['Docs selection: on right-to-left text, which this does not read as text. Copy it (Ctrl+C) and read the clipboard.'];
+    }
     const pastEnd = box.right > line.end + 0.15 * line.endHeight;
     const from = nearest(line.spots, box.left).at;
     const to = pastEnd ? line.line.text.length : nearest(line.spots, box.right).at;
@@ -230,7 +235,13 @@ export function docsLines(lines: Line[], fills: Fill[], state: DocsState): strin
   }
   if (selection.length) out.push(...selectionLine(m, selection));
   if (!out.length) {
-    out.push('Docs: no caret and no selection show (the document does not have the keyboard focus, or they are out of view).');
+    out.push(
+      state.focused === false
+        ? 'Docs: no caret and no selection show, and the document does not have the keyboard focus.'
+        : state.focused === true
+          ? 'Docs: no caret and no selection show in view (the document has the keyboard focus: they are out of view).'
+          : 'Docs: no caret and no selection show (the document does not have the keyboard focus, or they are out of view).',
+    );
   }
   return out;
 }

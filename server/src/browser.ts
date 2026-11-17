@@ -280,8 +280,13 @@ export class Browser {
     const tab = await this.attach(targetId);
     this.activeTargetId = targetId;
     if (!this.probed) {
-      this.modern = await probeModern(tab);
-      this.probed = true;
+      // No answer (a renderer that stalled) decides nothing: the browser
+      // stays treated as an older one, and the next tab asks again.
+      const modern = await probeModern(tab);
+      if (modern !== null) {
+        this.modern = modern;
+        this.probed = true;
+      }
     }
     return tab;
   }
@@ -598,13 +603,16 @@ export function describeEvent(ev: any): string {
 // A browser that predates a command answers -32601 "'Input.readFocusedField'
 // wasn't found" (measured 2026-11-17 on release 156.0.8078.47, the installed
 // 1.0.0; the build tree's browser carries the same version, so the version
-// cannot tell them apart). Any other answer means the command is there.
-async function probeModern(tab: Tab): Promise<boolean> {
+// cannot tell them apart). An answer, or any other protocol error, means the
+// command is there; no answer at all (a timeout, the pipe gone) means
+// nothing, and is null.
+async function probeModern(tab: Tab): Promise<boolean | null> {
   try {
     await tab.send('Input.readFocusedField', {}, 10_000);
     return true;
   } catch (e) {
-    return !(e instanceof CdpError && e.code === -32601 && /wasn't found/.test(e.message));
+    if (!(e instanceof CdpError)) return null;
+    return !(e.code === -32601 && /wasn't found/.test(e.message));
   }
 }
 

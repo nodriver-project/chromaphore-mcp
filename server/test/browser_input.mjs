@@ -180,6 +180,17 @@ if (!modern) {
     check(JSON.stringify(later.slice(0, 2)) === JSON.stringify(at) && later[2] === 0, `${what}: nothing went out after the stop, no Enter (${JSON.stringify(later)})`);
   }
 
+  // A press that makes the page move the focus: the burst stops in that step,
+  // and the answer says the press itself went out.
+  await clear();
+  await call('eval_js', { expression: "document.getElementById('a').addEventListener('keydown', (e) => { if (e.key === 'F8') document.getElementById('b').focus(); })" });
+  r = await call('type', { keys: ['ab', { press: 'F8' }, 'cd'], expect_focus: ids.a });
+  await sleep(800);
+  const pressed = await js(`[document.getElementById('a').value, document.getElementById('b').value]`);
+  console.log(`  a press: ${r.text.split('\n').slice(0, 2).join(' | ')}; fields ${JSON.stringify(pressed)}`);
+  check(/^The burst stopped: the focus left \S+\. 1 of 3 step\(s\) went out whole; of step 2 \(\{"press": "F8"\}\), its key went down: the press was made, so do not press it again; nothing after\./.test(r.text), 'a stop inside a press step says the press went out');
+  check(pressed[0] === 'ab' && pressed[1] === '', `nothing of the step after it was typed (${JSON.stringify(pressed)})`);
+
   // A cancel mid-string stops it at once; every key that went down came up.
   await clear();
   const text = 'Words Typed With Shift Here And There Until It Is Cut';

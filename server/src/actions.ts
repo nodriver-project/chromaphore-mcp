@@ -918,6 +918,9 @@ async function releaseIfDown(tab: Tab, r: any): Promise<string | null> {
   try {
     const u = await withPointer(tab, (pp) => tab.send('Input.moveTo', { x: p.x, y: p.y, ...pp, end: { action: 'release' } }, 30_000));
     if (u.x !== undefined) tab.pointer = { x: u.x, y: u.y };
+    if (u.outcome !== 'released') {
+      return `The drag ended with its button still down, and letting it go was answered ${u.outcome}${u.reason ? ` (${u.reason})` : ''}.`;
+    }
     return `The drag ended with its button still down; it was let go at ${at(p)}.`;
   } catch (e) {
     const why = e instanceof CdpError ? e.message : e instanceof Error ? e.message : String(e);
@@ -1194,6 +1197,7 @@ export async function type(tab: Tab, opts: TypeOptions): Promise<string> {
     if (m.cancelled) return [m.cancelled, ...(logged ? [logged] : [])].join('\n');
     outcome = m.outcome ?? outcome;
     said.push(...m.said);
+    if (signal?.aborted) return [...said, 'Stopped on request after the keys; nothing after them was sent.'].join('\n');
     if (opts.submit && !m.stopped) {
       await chord('Enter');
       said.push('Pressed Enter.');
@@ -1462,12 +1466,18 @@ function stepAccount(r: any, step: Step, who: string): { part: string | null; un
       listed,
     };
   }
+  if (step.kind === 'press') {
+    const went = (r.timeline ?? []).some((e: any) => e.step === cur && e.event === 'down');
+    return { part: went ? 'its key went down: the press was made, so do not press it again' : null, uncertain: null, listed: new Set() };
+  }
   if (step.kind !== 'text') return { part: null, uncertain: null, listed: new Set() };
-  const total = step.text.length;
+  // The browser's charIndex counts characters (code points), as these do.
+  const letters = [...step.text];
+  const total = letters.length;
   const chars = [...new Set<number>(unsure.map((e: any) => e.charIndex as number))].sort((a, b) => a - b);
   const part = `${n} of ${total} character(s) had their key go down (they reached a field)`;
   const uncertain = chars.length
-    ? `Of them, the browser lists ${chars.length} as uncertain (${chars.map((i) => JSON.stringify(step.text[i] ?? '?')).join(', ')}): they may have gone to the field that took the focus, so ${who} holds between ${n - chars.length} and ${n} of them.`
+    ? `Of them, the browser lists ${chars.length} as uncertain (${chars.map((i) => JSON.stringify(letters[i] ?? '?')).join(', ')}): they may have gone to the field that took the focus, so ${who} holds between ${n - chars.length} and ${n} of them.`
     : n
       ? `The browser lists none of them as uncertain: all ${n} went to ${who}.`
       : null;
@@ -1482,8 +1492,8 @@ function keyTimesLine(notBefore: number | undefined, r: any): string | null {
   const downs = tl.filter((e) => e.event === 'down');
   const ups = tl.filter((e) => e.event === 'up');
   if (typeof r?.startEpochMs !== 'number' || !downs.length || !ups.length) return null;
-  const first = r.startEpochMs + Math.min(...downs.map((e) => e.timeMs));
-  const last = r.startEpochMs + Math.max(...ups.map((e) => e.timeMs));
+  const first = r.startEpochMs + downs.reduce((m, e) => Math.min(m, e.timeMs), Infinity);
+  const last = r.startEpochMs + ups.reduce((m, e) => Math.max(m, e.timeMs), -Infinity);
   const late = notBefore === undefined ? '' : `, ${Math.round(first - notBefore)} ms after not_before`;
   return `Ran from ${iso(first)} (the first key down${late}) to ${iso(last)} (the last key up), ${Math.round(last - first)} ms.`;
 }
@@ -1526,7 +1536,10 @@ async function planOnly(
   const tl: any[] = r.timeline ?? [];
   const downs = tl.filter((e) => e.event === 'down').map((e) => e.timeMs);
   const ups = tl.filter((e) => e.event === 'up').map((e) => e.timeMs);
-  const span = downs.length && ups.length ? Math.max(...ups) - Math.min(...downs) : 0;
+  const span =
+    downs.length && ups.length
+      ? ups.reduce((m: number, t: number) => Math.max(m, t), -Infinity) - downs.reduce((m: number, t: number) => Math.min(m, t), Infinity)
+      : 0;
   const whole = typeof r.durationMs === 'number' && Math.abs(r.durationMs - span) > 1 ? `; the plan's whole length with its pauses is ${Math.round(r.durationMs)} ms` : '';
   const typos = r.typosCorrected ? `, ${r.typosCorrected} typo(s) made and corrected` : '';
   const lines = [
