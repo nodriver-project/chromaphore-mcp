@@ -1,5 +1,5 @@
 # Chromaphore-mcp
-[![Discord](https://img.shields.io/discord/1499516872758923264?logo=discord&label=Discord)](https://discord.gg/EdRx3832Hw)
+[![Discord](https://img.shields.io/discord/1499516872758923264?logo=discord&label=Discord)](https://discord.gg/EdRx3832Hw) [![As seen on Open Source Alternatives](https://www.opensourcealternatives.to/badge-osa.svg)](https://www.opensourcealternatives.to)
 
 **Support:**  [Discussions](https://github.com/nodriver-project/Chromaphore-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromaphore-Browser/releases)
 
