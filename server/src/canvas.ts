@@ -10,6 +10,10 @@ export interface Pt {
 
 export interface Run {
   text: string;
+  font?: string;
+  color?: string;
+  alpha?: number;
+  stroke?: boolean;
   // ltr or rtl, and whether the run holds more than one direction.
   direction?: string;
   bidi?: boolean;
@@ -36,6 +40,7 @@ export interface Canvas {
   shownRect?: { x: number; y: number; width: number; height: number };
   exact: boolean;
   truncated: boolean;
+  untrackedBitmap?: boolean;
   runs: Run[];
   fills?: Fill[];
 }
@@ -64,26 +69,37 @@ export interface Line {
   joined: boolean[];
 }
 
-// Bidi controls and marks: Google Docs wraps every string it draws in
-// U+202D ... U+202C.
-const FORMAT = /[\u202A-\u202E\u2066-\u2069\u200E\u200F]/;
+// Invisible characters stripped from canvas text and from caller queries:
+// bidi controls and marks (Google Docs wraps every string in U+202D ... U+202C),
+// zero-width space, word joiner, BOM and soft hyphen (canvas-editor starts lines
+// with U+200B), and Private Use Area code points (PDF.js draws glyphs as U+E0xx).
+// ZWNJ (U+200C) and ZWJ (U+200D) stay: scripts and emoji sequences need them.
+const IGNORED = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B\u2060\uFEFF\u00AD\p{Co}]/u;
 
 export async function readCanvas(tab: Tab): Promise<CanvasRead> {
   return tab.send('Page.agentCanvasText', { inView: true }, 30_000);
 }
 
+const ZERO_ALPHA_COLOR = /^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\s*\))$/i;
+
 function piece(run: Run, canvas: Canvas): Piece | null {
+  if (run.alpha === 0 || (run.color && ZERO_ALPHA_COLOR.test(run.color.trim()))) return null;
   let text = '';
   const map: number[] = [];
-  for (let i = 0; i < run.text.length; i++) {
-    if (FORMAT.test(run.text[i])) continue;
-    map.push(i);
-    text += run.text[i];
+  let lastEnd = 0;
+  for (let i = 0; i < run.text.length; ) {
+    const cp = run.text.codePointAt(i)!;
+    const len = cp > 0xffff ? 2 : 1;
+    const ch = run.text.slice(i, i + len);
+    if (!IGNORED.test(ch)) {
+      for (let j = 0; j < len; j++) map.push(i + j);
+      text += ch;
+      lastEnd = i + len;
+    }
+    i += len;
   }
   // The end: right after the last character kept.
-  let end = run.text.length;
-  while (end > 0 && FORMAT.test(run.text[end - 1])) end--;
-  map.push(end);
+  map.push(lastEnd);
   return text.trim() ? { run, canvas, text, map } : null;
 }
 
@@ -103,16 +119,72 @@ function rotated(r: Run): boolean {
 // space the page did not draw. A rotated run is a line of its own. Lines are
 // read top to bottom within each canvas, canvases in the answer's (page)
 // order.
+// Outlined or overprinted text (strokeText then fillText at the same spot, as
+// Desmos and ECharts draw) gives two runs with the same text and baseline:
+// keep one, preferring a fill over a stroke, then an exact run, then the later
+// draw. Pure strokeText with no matching fill stays. Bucketed on a 4 px grid
+// (tolerance is at most 2 px, so any match lies in the 3x3 neighbourhood).
+function dedup(pieces: Piece[]): Piece[] {
+  const kept: Piece[] = [];
+  const buckets = new Map<string, number[]>();
+  const CELL = 4;
+  const better = (cand: Piece, cur: Piece): boolean => {
+    const cs = !!cand.run.stroke;
+    const ks = !!cur.run.stroke;
+    if (cs !== ks) return !cs;
+    if (cand.run.exact !== cur.run.exact) return cand.run.exact;
+    return true;
+  };
+  for (const p of pieces) {
+    const { start, end } = p.run.baseline;
+    const gx = Math.floor(start.x / CELL);
+    const gy = Math.floor(start.y / CELL);
+    const ph = heightOf(p);
+    const pw = p.run.width;
+    let match = -1;
+    outer: for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const list = buckets.get(`${p.text}\0${gx + dx},${gy + dy}`);
+        if (!list) continue;
+        for (const idx of list) {
+          const q = kept[idx];
+          const h = Math.min(ph, heightOf(q));
+          const w = Math.min(pw, q.run.width);
+          const tol = Math.min(2, Math.max(0.5, 0.15 * h), w > 0 ? Math.max(0.5, 0.4 * w) : 2);
+          if (dist(start, q.run.baseline.start) <= tol && dist(end, q.run.baseline.end) <= tol) {
+            match = idx;
+            break outer;
+          }
+        }
+      }
+    }
+    if (match >= 0) {
+      if (better(p, kept[match])) kept[match] = p;
+    } else {
+      const idx = kept.length;
+      kept.push(p);
+      const key = `${p.text}\0${gx},${gy}`;
+      const list = buckets.get(key);
+      if (list) list.push(idx);
+      else buckets.set(key, [idx]);
+    }
+  }
+  return kept;
+}
+
 export function linesOf(read: CanvasRead): Line[] {
   const all: Line[] = [];
   for (const canvas of read.canvases) {
     if (canvas.context !== '2d') continue;
-    const flat: Piece[] = [];
-    const lines: { y: number; h: number; pieces: Piece[] }[] = [];
+    const raw: Piece[] = [];
     for (const run of canvas.runs ?? []) {
       const p = piece(run, canvas);
-      if (!p) continue;
-      if (rotated(run)) lines.push({ y: Math.min(...run.quad.map((q) => q.y)), h: 0, pieces: [p] });
+      if (p) raw.push(p);
+    }
+    const flat: Piece[] = [];
+    const lines: { y: number; h: number; pieces: Piece[] }[] = [];
+    for (const p of dedup(raw)) {
+      if (rotated(p.run)) lines.push({ y: Math.min(...p.run.quad.map((q) => q.y)), h: 0, pieces: [p] });
       else flat.push(p);
     }
     flat.sort((a, b) => a.run.baseline.start.y - b.run.baseline.start.y || a.run.baseline.start.x - b.run.baseline.start.x);
@@ -152,20 +224,27 @@ const shown = (s: string, max = MAX_LINE) => (s.length > max ? s.slice(0, max - 
 
 // Why the text may be off, from the runs the lines are made of; and what the
 // answer left out.
+const UNTRACKED_BITMAP_NOTE =
+  'A canvas in view received copied bitmap content whose text could not be tracked (untrackedBitmap): use view and points if text there is missing.';
+
 function notes(read: CanvasRead, lines: Line[]): string[] {
   const out: string[] = [];
   const reasons = new Set<string>();
   for (const l of lines) for (const p of l.pieces) if (!p.run.exact) reasons.add(p.run.inexact ?? 'inexact');
   if (reasons.size) out.push(`Some of this text is not exact (${[...reasons].join(', ')}): its places may be off.`);
   if (read.canvases.some((c) => c.truncated)) out.push('A canvas holds more than its record keeps (truncated): its oldest text is missing.');
+  if (read.canvases.some((c) => c.context === '2d' && c.untrackedBitmap)) out.push(UNTRACKED_BITMAP_NOTE);
   if (read.runsCut) out.push(`${read.runsCut} run(s) were left out past the answer's cap.`);
   if (read.framesLeftOut?.length) out.push(`${read.framesLeftOut.length} frame(s) did not answer; their canvases are left out.`);
   return out;
 }
 
-// The section a listing ends with; none when no canvas in view shows text.
+// The section a listing ends with; none when no canvas in view shows text
+// (unless a canvas received untracked bitmap content, which is noted).
 export function canvasSection(read: CanvasRead, lines: Line[]): string[] {
-  if (!lines.length) return [];
+  if (!lines.length) {
+    return read.canvases.some((c) => c.context === '2d' && c.untrackedBitmap) ? ['', UNTRACKED_BITMAP_NOTE] : [];
+  }
   const out = ['', 'Canvas text in view:'];
   let size = 0;
   let n = 0;
@@ -262,7 +341,7 @@ function flowOf(lines: Line[]): FlowChar[] {
   return flow;
 }
 
-export const normalise = (s: string) => [...s].filter((c) => !FORMAT.test(c)).join('').replace(/\s+/g, ' ');
+export const normalise = (s: string) => [...s].filter((c) => !IGNORED.test(c)).join('').replace(/\s+/g, ' ');
 
 // The place at flow boundary b: before the character after it, unless that
 // is a space (the caller's text puts the space after the place), then after

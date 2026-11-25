@@ -6,7 +6,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CdpError, Connection, type CdpEvent } from './cdp.js';
+import { CdpError, Connection, ToolError, type CdpEvent } from './cdp.js';
+import { VideoRecorder } from './video.js';
 import {
   browserExe,
   COUNT_FILE,
@@ -19,7 +20,7 @@ import {
   TEMP_PROFILES_DIR,
 } from './paths.js';
 
-export class ToolError extends Error {}
+export { ToolError };
 
 // The first release with every command the tools use (the round-2 protocol).
 const MIN_MAJOR = 156;
@@ -76,6 +77,9 @@ export class Tab {
   pointer: { x: number; y: number } | null = null;
   viewport: { width: number; height: number } | null = null;
   lastListingId: string | null = null;
+  // The options lastListingId was taken with: Page.captureAgentSnapshot's
+  // `since` only returns a delta when offscreenMode and scope match.
+  lastListingOptions: { offscreenMode: string; scope: string } = { offscreenMode: 'summary', scope: 'on' };
   // The letters of the page the tab's last listing showed (Browser.lettersFor).
   letters = 'a';
   // When the main frame's latest cross-document load started, while it has
@@ -178,6 +182,7 @@ export class Browser {
   seed: number | null = null;
   bundleActive: boolean | null = null;
   recordingId: string | null = null;
+  readonly video: VideoRecorder;
   // Whether the browser has the commands newer than release 2.0.0 (canvas
   // text, the browser's own field reading, bursts as one command, its
   // clipboard): one probe on the first tab's session (probeModern).
@@ -192,6 +197,7 @@ export class Browser {
     readonly headless: boolean,
     readonly downloads: string,
   ) {
+    this.video = new VideoRecorder(conn);
     conn.on((e) => this.onEvent(e));
   }
 
@@ -279,6 +285,7 @@ export class Browser {
     const { targetId } = await this.conn.send('Target.createTarget', { url, newWindow });
     const tab = await this.attach(targetId);
     this.activeTargetId = targetId;
+    await this.video.follow(targetId);
     if (!this.probed) {
       // No answer (a renderer that stalled) decides nothing: the browser
       // stays treated as an older one, and the next tab asks again.
@@ -312,6 +319,7 @@ export class Browser {
     const tab = await this.tab(id);
     await this.conn.send('Target.activateTarget', { targetId: tab.targetId });
     this.activeTargetId = tab.targetId;
+    await this.video.follow(tab.targetId);
     return tab;
   }
 
@@ -373,16 +381,18 @@ export class Browser {
     if (this.closed) throw new ToolError('The browser has closed. Call browser_open.');
   }
 
-  async close(): Promise<void> {
-    if (this.closed) return;
+  async close(): Promise<string | null> {
+    if (this.closed) return null;
     // A recording stopped before the browser goes keeps its HAR whole.
     if (this.recordingId) {
       await this.conn.send('Browser.stopRecording', { recordingId: this.recordingId }, undefined, 30_000).catch(() => {});
       this.recordingId = null;
     }
+    const videoSaved = await this.video.shutDown(30_000);
     await this.conn.send('Browser.close', {}, undefined, 5_000).catch(() => {});
     this.conn.close();
     this.closed = true;
+    return videoSaved;
   }
 
   private async attach(targetId: string): Promise<Tab> {
@@ -400,6 +410,7 @@ export class Browser {
     switch (e.method) {
       case 'Connection.closed':
         this.closed = true;
+        this.video.onConnectionClosed();
         return;
       case 'Target.targetCreated':
       case 'Target.targetInfoChanged': {
@@ -432,6 +443,9 @@ export class Browser {
       case 'Browser.recordingEnded':
         if (p.recordingId === this.recordingId) this.recordingId = null;
         if (p.reason !== 'stopped') this.notices.push(`The recording ended by itself (${p.reason}): ${p.summary} Files: ${p.path}`);
+        return;
+      case 'Browser.videoRecordingEnded':
+        this.video.onEnded(p);
         return;
     }
     const tab = [...this.tabs.values()].find((t) => t.sessionId === e.sessionId);

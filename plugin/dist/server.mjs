@@ -3262,8 +3262,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input2 = path6;
+    function removeDotSegments(path7) {
+      let input2 = path7;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3337,11 +3337,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path6) {
-      if (path6 === "" || path6[0] === "/") {
-        return removeDotSegments(path6);
+    function removeDotSegmentsRelative(path7) {
+      if (path7 === "" || path7[0] === "/") {
+        return removeDotSegments(path7);
       }
-      const segments = path6.split("/");
+      const segments = path7.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3704,8 +3704,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path6 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const path7 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7242,12 +7242,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs7, exportName) {
+    function addFormats(ajv, list, fs8, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs7[f]);
+        ajv.addFormat(f, fs8[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7256,7 +7256,7 @@ var require_dist = __commonJS({
 });
 
 // src/server.ts
-import fs6 from "node:fs";
+import fs7 from "node:fs";
 
 // node_modules/zod/v3/helpers/util.js
 var util;
@@ -7632,8 +7632,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path6, errorMaps, issueData } = params;
-  const fullPath = [...path6, ...issueData.path || []];
+  const { data, path: path7, errorMaps, issueData } = params;
+  const fullPath = [...path7, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7748,11 +7748,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path6, key) {
+  constructor(parent, value, path7, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path6;
+    this._path = path7;
     this._key = key;
   }
   get path() {
@@ -11707,10 +11707,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path7) {
+  if (!path7)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path7.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12050,11 +12050,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path7, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path7);
     return iss;
   });
 }
@@ -12516,16 +12516,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path6 = []) => {
+  const processError = (error63, path7 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path6, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12564,17 +12564,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path6 = []) => {
+  const processError = (error63, path7 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path6, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path6, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
       } else {
-        const fullpath = [...path6, ...issue2.path];
+        const fullpath = [...path7, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12613,8 +12613,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path6 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path6) {
+  const path7 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path7) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -28165,11 +28165,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path6) {
-  if (path6.length === 0) {
+function getDotPath(path7) {
+  if (path7.length === 0) {
     return "object root";
   }
-  return path6.reduce((acc, seg, index) => {
+  return path7.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -30396,13 +30396,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path6 = ref.slice(1).split("/").filter(Boolean);
-  if (path6.length === 0) {
+  const path7 = ref.slice(1).split("/").filter(Boolean);
+  if (path7.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path6[0] === defsKey) {
-    const key = path6[1] === void 0 ? void 0 : decodeJSONPointerSegment(path6[1]);
+  if (path7[0] === defsKey) {
+    const key = path7[1] === void 0 ? void 0 : decodeJSONPointerSegment(path7[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -36658,11 +36658,13 @@ var StdioServerTransport = class {
 };
 
 // src/actions.ts
-import fs3 from "node:fs";
-import path3 from "node:path";
+import fs4 from "node:fs";
+import path4 from "node:path";
 import { randomInt } from "node:crypto";
 
 // src/cdp.ts
+var ToolError = class extends Error {
+};
 var CdpError = class extends Error {
   constructor(method, code, message) {
     super(message);
@@ -36752,34 +36754,781 @@ var Connection = class {
 
 // src/browser.ts
 import { spawn } from "node:child_process";
-import fs2 from "node:fs";
-import path2 from "node:path";
+import fs3 from "node:fs";
+import path3 from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/paths.ts
+// src/video.ts
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-var LOCAL = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local");
-var DATA_ROOT = path.join(LOCAL, "Chromaphore");
-var PROFILES_DIR = path.join(DATA_ROOT, "profiles");
-var TEMP_PROFILES_DIR = path.join(DATA_ROOT, "temp");
-var BROWSERS_DIR = path.join(DATA_ROOT, "browser");
-var CURRENT_FILE = path.join(DATA_ROOT, "current.json");
-var PENDING_FILE = path.join(DATA_ROOT, "remove.json");
-var IDS_DIR = path.join(DATA_ROOT, "ids");
+var DEFAULT_MINUTES = 10;
+var MAX_MINUTES = 60;
+var LABEL_CHARS = 500;
+var START_TIMEOUT_MS = 3e4;
+var COMMAND_TIMEOUT_MS = 1e4;
+var STOP_TIMEOUT_MS = 6e4;
+var CLEANUP_STOP_MS = 1e4;
+var START_SETTLE_MS = 5e3;
+var STOPPING_WAIT_MS = 1e4;
+var POLL_MS = 250;
+var IDLE_AFTER_MS = 1e3;
+var RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?\s*$/i;
+var BAD_NAME_CHARS = /[<>:"|?*\x00-\x1f]/;
+function classifyError(e) {
+  if (e instanceof CdpError) {
+    if (e.code === -32601 && /wasn't found/.test(e.message)) {
+      return { kind: "no_recorder", detail: e.message };
+    }
+    return { kind: "refused", detail: e.message };
+  }
+  if (e instanceof Error) {
+    if (/the browser is gone/i.test(e.message)) return { kind: "browser_gone", detail: e.message };
+    if (/got no answer within/i.test(e.message)) return { kind: "timed_out", detail: e.message };
+    return { kind: "other", detail: e.message };
+  }
+  return { kind: "other", detail: String(e) };
+}
+function stamp() {
+  return (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+}
+function eventsOf(mp4Path) {
+  const dir = path.dirname(mp4Path);
+  const name = path.basename(mp4Path);
+  const stem = name.toLowerCase().endsWith(".mp4") ? name.slice(0, -4) : name;
+  return path.join(dir, `${stem}.events.ndjson`);
+}
+function resolveVideoPath(asked, cwd = process.cwd()) {
+  let dir;
+  let base;
+  if (asked === void 0) {
+    dir = path.resolve(cwd, "recordings");
+    base = `video-${stamp()}`;
+  } else {
+    const trimmed = asked.trim();
+    if (!trimmed) throw new ToolError("path cannot be empty; omit it for a default file in recordings/.");
+    const isBare = !/[\\/:]/.test(trimmed);
+    if (isBare) {
+      let stem2 = trimmed;
+      if (stem2.toLowerCase().endsWith(".mp4")) stem2 = stem2.slice(0, -4);
+      stem2 = stem2.trim();
+      if (!stem2 || stem2 === "." || stem2 === ".." || BAD_NAME_CHARS.test(stem2)) {
+        throw new ToolError("Give the file a name with letters or digits in it.");
+      }
+      if (RESERVED.test(stem2)) {
+        throw new ToolError(`"${stem2}" is a name Windows keeps for a device; give the file another.`);
+      }
+      dir = path.resolve(cwd, "recordings");
+      base = stem2;
+    } else {
+      if (/[\\/]$/.test(trimmed)) {
+        throw new ToolError("path must name an .mp4 file, not a folder.");
+      }
+      const resolved = path.resolve(cwd, trimmed);
+      dir = path.dirname(resolved);
+      let raw = path.basename(resolved);
+      if (raw.toLowerCase().endsWith(".mp4")) raw = raw.slice(0, -4);
+      raw = raw.trim();
+      if (!raw || raw === "." || raw === ".." || BAD_NAME_CHARS.test(raw)) {
+        throw new ToolError("path must end with a valid file name.");
+      }
+      if (RESERVED.test(raw)) {
+        throw new ToolError(`"${raw}" is a name Windows keeps for a device; give the file another.`);
+      }
+      base = raw;
+    }
+  }
+  let stem = base;
+  for (let n = 2; fs.existsSync(path.join(dir, `${stem}.mp4`)) || fs.existsSync(path.join(dir, `${stem}.events.ndjson`)); n++) {
+    stem = `${base} (${n})`;
+  }
+  return path.join(dir, `${stem}.mp4`);
+}
+function clock(ms) {
+  const seconds = Math.floor(Math.max(0, ms) / 1e3);
+  const mins = Math.floor(seconds / 60);
+  const secs = String(seconds % 60).padStart(2, "0");
+  return `${mins}:${secs}`;
+}
+function mb(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function sizeOnDisk(file2) {
+  if (!file2) return "";
+  try {
+    const st = fs.statSync(file2);
+    return st.isFile() ? ` (${mb(st.size)})` : "";
+  } catch {
+    return "";
+  }
+}
+function endedHow(reason) {
+  switch (reason) {
+    case "timeLimit":
+      return "at its time limit";
+    case "targetClosed":
+      return "when its tab closed";
+    case "sessionClosed":
+      return "when the browser's connection closed";
+    case "error":
+      return "because the browser could not go on recording";
+    case "stopped":
+      return "when it was stopped";
+    default:
+      return "by itself";
+  }
+}
+function formatHandedOver(filePath, eventsPath, r) {
+  let out = filePath;
+  if (r && typeof r.durationMs === "number" && typeof r.frames === "number" && typeof r.bytes === "number") {
+    out += `: ${clock(r.durationMs)}, ${mb(r.bytes)}, ${r.frames} ${r.frames === 1 ? "frame" : "frames"}`;
+    if (r.dropped && r.dropped > 0) out += ` (${r.dropped} dropped)`;
+  }
+  out += ".";
+  if (eventsPath) out += ` Events: ${eventsPath}.`;
+  return out;
+}
+function failedMessage(what, kind, detail) {
+  switch (kind) {
+    case "no_recorder":
+      return "This browser was not built with a video recorder (needs a Chromaphore build newer than release 2.0.0).";
+    case "browser_gone":
+      return "The browser has gone, and the recording with it.";
+    case "timed_out":
+      return `The browser did not answer in time when asked to ${what}. Try again.`;
+    default:
+      return `The browser would not ${what}${detail ? `: ${detail}` : "."}`;
+  }
+}
+function deleteFiles(mp4, events) {
+  const left = [];
+  for (const p of [mp4, events]) {
+    if (!p) continue;
+    try {
+      fs.rmSync(p, { force: true });
+    } catch {
+    }
+    if (fs.existsSync(p)) left.push(p);
+  }
+  return left;
+}
+var VideoRecorder = class {
+  constructor(sender, timing = {}) {
+    this.sender = sender;
+    this.idleAfterMs = timing.idleAfterMs ?? IDLE_AFTER_MS;
+    this.stopWaitMs = timing.stopWaitMs ?? STOP_TIMEOUT_MS;
+    this.startSettleMs = timing.startSettleMs ?? START_SETTLE_MS;
+    this.stoppingWaitMs = timing.stoppingWaitMs ?? STOPPING_WAIT_MS;
+    this.pollMs = timing.pollMs ?? POLL_MS;
+  }
+  sender;
+  idleAfterMs;
+  stopWaitMs;
+  startSettleMs;
+  stoppingWaitMs;
+  pollMs;
+  state = "free";
+  recordingId = null;
+  filePath = null;
+  eventsPath = null;
+  cutIdle = false;
+  maxMinutes = DEFAULT_MINUTES;
+  holds = /* @__PURE__ */ new Set();
+  browserPaused = false;
+  pauseUnknown = false;
+  stopUnanswered = false;
+  discardOnStop = false;
+  abandoned = false;
+  earlyEnded = null;
+  ended = null;
+  endedTold = false;
+  idleToken = 0;
+  idleTimer = null;
+  inFlight = 0;
+  lockChain = Promise.resolve();
+  /** The id of an active or stopping recording, for process exit teardown. */
+  activeId() {
+    return this.state === "recording" || this.state === "stopping" ? this.recordingId : null;
+  }
+  /** Whether a recording is starting, running, stopping or owed a stop. */
+  busy() {
+    return this.state !== "free";
+  }
+  // Serializes pause, resume, mark, retarget and resync calls so they never
+  // race each other over the pipe. Never re-entered from inside itself.
+  withLock(fn) {
+    const run2 = this.lockChain.then(fn, fn);
+    this.lockChain = run2.then(
+      () => {
+      },
+      () => {
+      }
+    );
+    return run2;
+  }
+  cancelIdleCut() {
+    this.idleToken++;
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+  scheduleIdleCut() {
+    if (!this.cutIdle || this.state !== "recording") return;
+    const token = ++this.idleToken;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      void this.holdQuietly("idle", true, token);
+    }, this.idleAfterMs);
+    this.idleTimer.unref?.();
+  }
+  free() {
+    this.cancelIdleCut();
+    this.state = "free";
+    this.recordingId = null;
+    this.filePath = null;
+    this.eventsPath = null;
+    this.holds.clear();
+    this.browserPaused = false;
+    this.pauseUnknown = false;
+    this.stopUnanswered = false;
+    this.discardOnStop = false;
+    this.abandoned = false;
+    this.earlyEnded = null;
+  }
+  /** Called by Browser.onEvent on `Browser.videoRecordingEnded`. */
+  onEnded(params) {
+    const id2 = params?.recordingId ?? "";
+    const result = params?.result ?? {};
+    if (this.state === "starting") {
+      this.earlyEnded = { recordingId: id2, result };
+      return;
+    }
+    if ((this.state === "recording" || this.state === "stopping") && id2 && id2 === this.recordingId) {
+      const filePath = result.path ?? this.filePath ?? "";
+      const eventsPath = result.eventsPath ?? this.eventsPath ?? (filePath ? eventsOf(filePath) : "");
+      this.ended = { recordingId: id2, result, filePath, eventsPath };
+      this.endedTold = false;
+      if (this.state === "recording") this.free();
+    }
+  }
+  takeEarlyEnded(id2) {
+    const e = this.earlyEnded;
+    this.earlyEnded = null;
+    return e && e.recordingId === id2 ? e : null;
+  }
+  /** Called by Browser.onEvent on `Connection.closed`. */
+  onConnectionClosed() {
+    this.free();
+  }
+  /**
+   * One-shot notice for the next non-video_stop tool call when a recording
+   * ended by itself. The full figures stay stored until `video_stop`.
+   */
+  takeEndedNotice() {
+    if (!this.ended || this.endedTold || this.discardOnStop) return null;
+    this.endedTold = true;
+    const e = this.ended;
+    return `[since your last call] Your video recording ended ${endedHow(e.result.reason)}: ${e.filePath}. video_stop gives its figures.`;
+  }
+  // ==================== Start ====================
+  async start(o) {
+    if (this.state !== "free") {
+      const where = this.state === "recording" && this.filePath ? ` ${this.filePath}` : "";
+      throw new ToolError(`This browser is already recording${where}. Call video_stop first.`);
+    }
+    const fps = o.fps;
+    if (!Number.isInteger(fps) || fps < 1 || fps > 60) {
+      throw new ToolError("fps has to be a whole number from 1 to 60.");
+    }
+    if (o.idle !== "cut" && o.idle !== "keep") {
+      throw new ToolError('idle has to be "cut" or "keep".');
+    }
+    if (o.width !== void 0 && (!Number.isInteger(o.width) || o.width < 2) || o.height !== void 0 && (!Number.isInteger(o.height) || o.height < 2)) {
+      throw new ToolError("width and height have to be whole numbers of pixels, 2 or more.");
+    }
+    const maxMinutes = o.maxMinutes ?? DEFAULT_MINUTES;
+    if (!Number.isInteger(maxMinutes) || maxMinutes < 1 || maxMinutes > MAX_MINUTES) {
+      throw new ToolError(`max_minutes has to be a whole number from 1 to ${MAX_MINUTES}.`);
+    }
+    const audio = o.audio ?? true;
+    const filePath = resolveVideoPath(o.path, o.cwd);
+    const eventsPath = eventsOf(filePath);
+    this.ended = null;
+    this.endedTold = false;
+    this.state = "starting";
+    this.filePath = filePath;
+    this.eventsPath = eventsPath;
+    this.cutIdle = o.idle === "cut";
+    this.maxMinutes = maxMinutes;
+    this.holds.clear();
+    this.browserPaused = false;
+    this.pauseUnknown = false;
+    this.stopUnanswered = false;
+    this.discardOnStop = false;
+    this.abandoned = false;
+    this.earlyEnded = null;
+    try {
+      const status = await this.sender.send("Browser.videoRecordingStatus", {}, void 0, COMMAND_TIMEOUT_MS);
+      if (status?.recording) {
+        this.free();
+        throw new ToolError(
+          "This browser is already recording something this session did not start, so nothing was started and it was left alone."
+        );
+      }
+    } catch (e) {
+      this.free();
+      if (e instanceof ToolError) throw e;
+      const err = classifyError(e);
+      throw new ToolError(failedMessage("start recording", err.kind, err.detail));
+    }
+    let started;
+    try {
+      started = await this.sender.send(
+        "Browser.startVideoRecording",
+        {
+          targetId: o.targetId,
+          path: filePath,
+          fps,
+          ...o.width !== void 0 ? { width: o.width } : {},
+          ...o.height !== void 0 ? { height: o.height } : {},
+          maxMinutes,
+          audio,
+          redact: false
+        },
+        void 0,
+        START_TIMEOUT_MS
+      );
+    } catch (e) {
+      const err = classifyError(e);
+      if (err.kind === "timed_out") {
+        const msg = await this.recoverTimedOutStart(filePath, eventsPath);
+        throw new ToolError(msg);
+      }
+      this.free();
+      throw new ToolError(failedMessage("start recording", err.kind, err.detail));
+    }
+    const id2 = started.recordingId;
+    const actualEvents = started.eventsPath ?? eventsPath;
+    const early = this.takeEarlyEnded(id2);
+    const closedMeanwhile = this.abandoned;
+    this.recordingId = id2;
+    this.eventsPath = actualEvents;
+    this.state = "recording";
+    if (closedMeanwhile) {
+      this.state = "stopping";
+      await this.stopQuietly(id2, CLEANUP_STOP_MS);
+      this.free();
+      throw new ToolError("The browser has gone, and the recording with it.");
+    }
+    if (early) {
+      this.onEnded(early);
+    } else if (this.cutIdle) {
+      this.scheduleIdleCut();
+    }
+    return `Recording ${filePath} at ${started.width}x${started.height}, ${fps} fps; it ends itself after ${maxMinutes} min of recorded time.`;
+  }
+  async recoverTimedOutStart(filePath, eventsPath) {
+    this.state = "stopping";
+    this.discardOnStop = true;
+    const s = await this.settle(null, this.startSettleMs, CLEANUP_STOP_MS);
+    switch (s.how) {
+      case "not_running":
+        this.free();
+        return "The browser did not answer in time when asked to start recording; nothing was started. Try again.";
+      case "stopped":
+      case "browser_gone": {
+        this.free();
+        const left = deleteFiles(filePath, eventsPath);
+        if (left.length) {
+          return `The browser did not answer in time when asked to start recording; it stopped, but could not delete ${left.join(" and ")}.`;
+        }
+        return "The browser did not answer in time when asked to start recording; what it began was stopped and its files deleted. Try again.";
+      }
+      case "still_running":
+        this.stopUnanswered = true;
+        if (s.foundId) this.recordingId = s.foundId;
+        return `The start timed out, and the browser went on with a recording into ${filePath} that it would not stop yet. Call video_stop to stop it and delete its files.`;
+    }
+  }
+  // ==================== Holds: agent pause/resume & idle cut ====================
+  async pause() {
+    return this.agentHold(true);
+  }
+  async resume() {
+    return this.agentHold(false);
+  }
+  async agentHold(pause2) {
+    const res = await this.withLock(async () => {
+      await this.resyncPauseLocked();
+      if (this.state !== "recording") {
+        throw new ToolError("Nothing is recording.");
+      }
+      if (!pause2 && !this.holds.has("agent")) {
+        const at3 = await this.statusTime();
+        return `It was not paused${this.atClause(at3)}.`;
+      }
+      try {
+        const at3 = await this.holdLocked("agent", pause2, -1);
+        const shown2 = at3 === -2 ? await this.statusTime() : at3;
+        if (!pause2 && this.cutIdle && this.holds.has("idle")) {
+          return `Resumed${this.atClause(shown2)}; with idle cut it records again from the next action.`;
+        }
+        return `${pause2 ? "Paused" : "Resumed"}${this.atClause(shown2)}.`;
+      } catch (e) {
+        const err = classifyError(e);
+        if (err.kind === "refused") {
+          if (pause2) this.holds.delete("agent");
+          else this.holds.add("agent");
+        }
+        if (this.state !== "recording") throw new ToolError("Nothing is recording.");
+        throw new ToolError(failedMessage(pause2 ? "pause" : "resume", err.kind, err.detail));
+      }
+    });
+    return res;
+  }
+  // Must run inside withLock.
+  async holdLocked(hold, on, token) {
+    await this.resyncPauseLocked();
+    if (this.state !== "recording" || !this.recordingId) return -1;
+    if (token >= 0 && token !== this.idleToken) return -1;
+    if (on) this.holds.add(hold);
+    else this.holds.delete(hold);
+    const want = this.holds.size > 0;
+    if (want === this.browserPaused) return -2;
+    const id2 = this.recordingId;
+    try {
+      const r = await this.sender.send(
+        want ? "Browser.pauseVideoRecording" : "Browser.resumeVideoRecording",
+        { recordingId: id2, label: hold },
+        void 0,
+        COMMAND_TIMEOUT_MS
+      );
+      this.browserPaused = want;
+      return typeof r?.mediaTimeMs === "number" ? r.mediaTimeMs : -1;
+    } catch (e) {
+      const err = classifyError(e);
+      if (err.kind !== "refused") this.pauseUnknown = true;
+      throw e;
+    }
+  }
+  async holdQuietly(hold, on, token) {
+    try {
+      await this.withLock(() => this.holdLocked(hold, on, token));
+    } catch {
+    }
+  }
+  // Must run inside withLock.
+  async resyncPauseLocked() {
+    if (!this.pauseUnknown || this.state !== "recording") return;
+    try {
+      const now = await this.sender.send("Browser.videoRecordingStatus", {}, void 0, COMMAND_TIMEOUT_MS);
+      this.browserPaused = now?.state === "paused";
+      this.pauseUnknown = false;
+      if (this.browserPaused && this.holds.size === 0) this.holds.add("agent");
+    } catch {
+    }
+  }
+  async statusTime() {
+    try {
+      const now = await this.sender.send("Browser.videoRecordingStatus", {}, void 0, COMMAND_TIMEOUT_MS);
+      return now?.recording && typeof now.mediaTimeMs === "number" ? now.mediaTimeMs : -1;
+    } catch {
+      return -1;
+    }
+  }
+  atClause(elapsedMs) {
+    if (elapsedMs < 0) return "";
+    const left = this.maxMinutes > 0 ? Math.max(0, this.maxMinutes * 6e4 - elapsedMs) : -1;
+    return ` at ${clock(elapsedMs)}${left >= 0 ? `, ${clock(left)} left` : ""}`;
+  }
+  // ==================== Marks, tool hooks & tab following ====================
+  async mark(rawLabel) {
+    const trimmed = rawLabel.trim();
+    if (!trimmed) throw new ToolError("video_mark needs a label.");
+    const chars = [...trimmed];
+    const label = chars.length > LABEL_CHARS ? chars.slice(0, LABEL_CHARS).join("") : trimmed;
+    return this.withLock(async () => {
+      if (this.state !== "recording" || !this.recordingId) {
+        throw new ToolError("Nothing is recording.");
+      }
+      try {
+        const r = await this.sender.send(
+          "Browser.markVideoRecording",
+          { recordingId: this.recordingId, event: JSON.stringify({ label }) },
+          void 0,
+          COMMAND_TIMEOUT_MS
+        );
+        const at3 = typeof r?.mediaTimeMs === "number" ? r.mediaTimeMs : -1;
+        return `Marked${this.atClause(at3)}.`;
+      } catch (e) {
+        if (this.state !== "recording") throw new ToolError("Nothing is recording.");
+        const err = classifyError(e);
+        throw new ToolError(failedMessage("mark", err.kind, err.detail));
+      }
+    });
+  }
+  async markQuietly(event) {
+    try {
+      await this.withLock(async () => {
+        if (this.state !== "recording" || !this.recordingId) return;
+        await this.sender.send(
+          "Browser.markVideoRecording",
+          { recordingId: this.recordingId, event: JSON.stringify(event) },
+          void 0,
+          COMMAND_TIMEOUT_MS
+        );
+      });
+    } catch {
+    }
+  }
+  async toolStarted(tool) {
+    this.inFlight++;
+    if (this.state !== "recording") return;
+    this.cancelIdleCut();
+    if (this.cutIdle) await this.holdQuietly("idle", false, -1);
+    await this.markQuietly({ type: "tool", tool, at: "start" });
+  }
+  async toolEnded(tool, ok) {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    if (this.state !== "recording") return;
+    await this.markQuietly({ type: "tool", tool, at: "end", ok });
+    if (this.inFlight === 0) this.scheduleIdleCut();
+  }
+  async follow(targetId) {
+    if (this.state !== "recording" || !this.recordingId) return;
+    try {
+      await this.withLock(async () => {
+        if (this.state !== "recording" || !this.recordingId) return;
+        await this.sender.send(
+          "Browser.setVideoRecordingTarget",
+          { recordingId: this.recordingId, targetId },
+          void 0,
+          COMMAND_TIMEOUT_MS
+        );
+      });
+    } catch {
+    }
+  }
+  // ==================== Stop & teardown ====================
+  async stop() {
+    let id2;
+    let filePath;
+    let eventsPath;
+    let owed;
+    if (this.state === "recording") {
+      this.state = "stopping";
+      this.cancelIdleCut();
+      id2 = this.recordingId;
+      filePath = this.filePath;
+      eventsPath = this.eventsPath;
+      owed = false;
+    } else if (this.state === "stopping" && this.stopUnanswered) {
+      this.stopUnanswered = false;
+      id2 = this.recordingId;
+      filePath = this.filePath;
+      eventsPath = this.eventsPath;
+      owed = true;
+    } else if (this.state === "stopping") {
+      return this.unansweredMessage(this.filePath, this.discardOnStop);
+    } else if (this.ended) {
+      const e = this.takeEnded();
+      return `It had already ended ${endedHow(e.result.reason)}. Saved ${formatHandedOver(e.filePath, e.eventsPath, e.result)}`;
+    } else {
+      throw new ToolError("Nothing is recording.");
+    }
+    try {
+      return owed ? await this.settleOwed(id2, filePath, eventsPath) : await this.stopRunning(id2, filePath, eventsPath);
+    } catch (e) {
+      if (e instanceof ToolError) throw e;
+      this.free();
+      throw e;
+    }
+  }
+  async stopRunning(id2, filePath, eventsPath) {
+    try {
+      const r = await this.sender.send("Browser.stopVideoRecording", { recordingId: id2 }, void 0, this.stopWaitMs);
+      return this.finishStop(r?.result ?? {}, filePath, eventsPath);
+    } catch (e) {
+      const err = classifyError(e);
+      if (err.kind === "timed_out" || err.kind === "other") {
+        this.stopUnanswered = true;
+        throw new ToolError(this.unansweredMessage(filePath, this.discardOnStop));
+      }
+      if (err.kind === "browser_gone") {
+        this.free();
+        throw new ToolError("The browser has gone, and the recording with it.");
+      }
+      return this.settleOwed(id2, filePath, eventsPath);
+    }
+  }
+  async settleOwed(id2, filePath, eventsPath) {
+    const s = await this.settle(id2, this.stoppingWaitMs, this.stopWaitMs);
+    const discard = this.discardOnStop;
+    switch (s.how) {
+      case "stopped":
+        return this.finishStop(s.result ?? {}, filePath ?? "", eventsPath);
+      case "not_running": {
+        const was = id2 && this.ended?.recordingId === id2 ? this.takeEnded() : null;
+        this.free();
+        if (discard) return this.discardedMessage(filePath, eventsPath);
+        if (was) {
+          return `It had already ended ${endedHow(was.result.reason)}. Saved ${formatHandedOver(was.filePath, was.eventsPath, was.result)}`;
+        }
+        if (filePath && fs.existsSync(filePath)) {
+          const side = eventsPath ? ` Events: ${eventsPath}.` : "";
+          return `It is no longer recording; its figures were not kept. Saved ${filePath}${sizeOnDisk(filePath)}.${side}`;
+        }
+        return `It is no longer recording, and no file is at ${filePath ?? "the expected path"}.`;
+      }
+      case "browser_gone":
+        this.free();
+        if (discard) return this.discardedMessage(filePath, eventsPath);
+        throw new ToolError("The browser has gone, and the recording with it.");
+      case "still_running":
+        this.stopUnanswered = true;
+        if (s.foundId) this.recordingId = s.foundId;
+        throw new ToolError(this.unansweredMessage(filePath, discard));
+    }
+  }
+  finishStop(result, filePath, eventsPath) {
+    const discard = this.discardOnStop;
+    this.ended = null;
+    this.endedTold = false;
+    this.free();
+    if (discard) return this.discardedMessage(filePath, eventsPath);
+    const finalPath = result.path ?? filePath;
+    const finalEvents = result.eventsPath ?? eventsPath;
+    return `Saved ${formatHandedOver(finalPath, finalEvents, result)}`;
+  }
+  discardedMessage(filePath, eventsPath) {
+    const left = deleteFiles(filePath, eventsPath);
+    if (left.length) {
+      throw new ToolError(`The recording whose start timed out stopped, but could not delete ${left.join(" and ")}.`);
+    }
+    return "The recording whose start was cut short is stopped and its files deleted.";
+  }
+  unansweredMessage(filePath, discard) {
+    if (discard) {
+      return `The start timed out, and the browser went on with a recording into ${filePath ?? "the file"} that it would not stop yet. Call video_stop to stop it and delete its files.`;
+    }
+    return `The browser did not say the file was finished: it may still be writing it, or it did not answer. The file is ${filePath ?? "unknown"}. Calling video_stop again is safe, and it will report the file.`;
+  }
+  takeEnded() {
+    const e = this.ended;
+    this.ended = null;
+    this.endedTold = false;
+    return e;
+  }
+  async settle(id2, boundMs, stopWait) {
+    const deadline = Date.now() + boundMs;
+    let found = id2;
+    for (; ; ) {
+      let now;
+      try {
+        now = await this.sender.send("Browser.videoRecordingStatus", {}, void 0, COMMAND_TIMEOUT_MS);
+      } catch (e) {
+        const err = classifyError(e);
+        return { how: err.kind === "browser_gone" ? "browser_gone" : "still_running", foundId: found };
+      }
+      if (!now?.recording || id2 && id2 !== now.recordingId) {
+        return { how: "not_running", foundId: found };
+      }
+      found = now.recordingId ?? found;
+      if (now.state !== "stopping" && found) {
+        try {
+          const r = await this.sender.send("Browser.stopVideoRecording", { recordingId: found }, void 0, stopWait);
+          return { how: "stopped", result: r?.result ?? {}, foundId: found };
+        } catch (e) {
+          const err = classifyError(e);
+          if (err.kind === "browser_gone") return { how: "browser_gone", foundId: found };
+          if (err.kind !== "refused") return { how: "still_running", foundId: found };
+        }
+      }
+      if (Date.now() > deadline) {
+        return { how: "still_running", foundId: found };
+      }
+      await new Promise((r) => setTimeout(r, this.pollMs));
+    }
+  }
+  async stopQuietly(id2, waitMs) {
+    try {
+      await this.sender.send("Browser.stopVideoRecording", { recordingId: id2 }, void 0, waitMs);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /** Stops any active recording before the browser closes. Never throws. */
+  async shutDown(capMs = 3e4) {
+    let id2 = null;
+    let owed = false;
+    if (this.state === "starting") {
+      this.abandoned = true;
+      return null;
+    }
+    if (this.state === "stopping" && this.stopUnanswered) {
+      this.stopUnanswered = false;
+      id2 = this.recordingId;
+      owed = true;
+    } else if (this.state === "recording") {
+      this.state = "stopping";
+      this.cancelIdleCut();
+      id2 = this.recordingId;
+    } else {
+      return null;
+    }
+    const filePath = this.filePath;
+    const eventsPath = this.eventsPath;
+    const discard = this.discardOnStop;
+    let saved = null;
+    try {
+      let result = null;
+      if (owed) {
+        const s = await this.settle(id2, capMs, capMs);
+        if (s.how === "stopped") result = s.result ?? {};
+      } else if (id2) {
+        const r = await this.sender.send("Browser.stopVideoRecording", { recordingId: id2 }, void 0, capMs);
+        result = r?.result ?? {};
+      }
+      if (!discard && result && (result.path ?? filePath)) {
+        const finalPath = result.path ?? filePath;
+        const finalEvents = result.eventsPath ?? eventsPath;
+        saved = `Saved ${formatHandedOver(finalPath, finalEvents, result)}`;
+      }
+    } catch {
+    } finally {
+      this.free();
+      if (discard) deleteFiles(filePath, eventsPath);
+    }
+    return saved;
+  }
+};
+
+// src/paths.ts
+import fs2 from "node:fs";
+import os from "node:os";
+import path2 from "node:path";
+var LOCAL = process.env.LOCALAPPDATA ?? path2.join(os.homedir(), "AppData", "Local");
+var DATA_ROOT = path2.join(LOCAL, "Chromaphore");
+var PROFILES_DIR = path2.join(DATA_ROOT, "profiles");
+var TEMP_PROFILES_DIR = path2.join(DATA_ROOT, "temp");
+var BROWSERS_DIR = path2.join(DATA_ROOT, "browser");
+var CURRENT_FILE = path2.join(DATA_ROOT, "current.json");
+var PENDING_FILE = path2.join(DATA_ROOT, "remove.json");
+var IDS_DIR = path2.join(DATA_ROOT, "ids");
 var SESSION = (process.env.CLAUDE_CODE_SESSION_ID ?? "").replace(/[^\w-]/g, "");
-var COUNT_FILE = SESSION ? path.join(IDS_DIR, `${SESSION}.json`) : null;
-var OLD_ROOT = path.join(LOCAL, "Chromeleon");
-var OLD_PROFILES_DIR = path.join(OLD_ROOT, "profiles");
-var OLD_BROWSERS_DIR = path.join(OLD_ROOT, "browser");
-var OLD_TEMP_PROFILES_DIR = path.join(OLD_ROOT, "temp");
-var OLD_CURRENT_FILE = path.join(OLD_ROOT, "current.json");
+var COUNT_FILE = SESSION ? path2.join(IDS_DIR, `${SESSION}.json`) : null;
+var OLD_ROOT = path2.join(LOCAL, "Chromeleon");
+var OLD_PROFILES_DIR = path2.join(OLD_ROOT, "profiles");
+var OLD_BROWSERS_DIR = path2.join(OLD_ROOT, "browser");
+var OLD_TEMP_PROFILES_DIR = path2.join(OLD_ROOT, "temp");
+var OLD_CURRENT_FILE = path2.join(OLD_ROOT, "current.json");
 function browserExe() {
   const configured = configuredBrowser();
   if (configured) return configured;
   const installed = installedBrowser();
-  return installed && fs.existsSync(installed.exe) ? installed.exe : null;
+  return installed && fs2.existsSync(installed.exe) ? installed.exe : null;
 }
 function configuredBrowser() {
   const configured = process.env.CHROMAPHORE_BROWSER?.trim();
@@ -36788,7 +37537,7 @@ function configuredBrowser() {
 var isTag = (tag) => typeof tag === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(tag);
 function readRecord(file2) {
   try {
-    const { tag, exe } = JSON.parse(fs.readFileSync(file2, "utf8"));
+    const { tag, exe } = JSON.parse(fs2.readFileSync(file2, "utf8"));
     return isTag(tag) && typeof exe === "string" ? { tag, exe } : null;
   } catch {
     return null;
@@ -36802,23 +37551,23 @@ function installedBrowser() {
   return null;
 }
 function releaseDir(exe, tag) {
-  for (let dir = path.dirname(exe); dir !== path.dirname(dir); dir = path.dirname(dir)) {
-    if (path.basename(dir) === tag && path.basename(path.dirname(dir)).toLowerCase() === "browser") return dir;
+  for (let dir = path2.dirname(exe); dir !== path2.dirname(dir); dir = path2.dirname(dir)) {
+    if (path2.basename(dir) === tag && path2.basename(path2.dirname(dir)).toLowerCase() === "browser") return dir;
   }
-  return path.join(BROWSERS_DIR, tag);
+  return path2.join(BROWSERS_DIR, tag);
 }
-var samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+var samePath = (a, b) => path2.resolve(a).toLowerCase() === path2.resolve(b).toLowerCase();
 function newProfileDir(temp = false) {
-  const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-  const dir = path.join(temp ? TEMP_PROFILES_DIR : PROFILES_DIR, `${stamp2}-${Math.random().toString(16).slice(2, 6)}`);
-  fs.mkdirSync(dir, { recursive: true });
+  const stamp3 = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  const dir = path2.join(temp ? TEMP_PROFILES_DIR : PROFILES_DIR, `${stamp3}-${Math.random().toString(16).slice(2, 6)}`);
+  fs2.mkdirSync(dir, { recursive: true });
   return dir;
 }
 function profileInUse(profile) {
-  const lock = path.join(profile, "lockfile");
-  if (!fs.existsSync(lock)) return false;
+  const lock = path2.join(profile, "lockfile");
+  if (!fs2.existsSync(lock)) return false;
   try {
-    fs.rmSync(lock);
+    fs2.rmSync(lock);
     return false;
   } catch {
     return true;
@@ -36827,10 +37576,10 @@ function profileInUse(profile) {
 async function removeRelease(dir) {
   const doomed = `${dir}-removing`;
   try {
-    await fs.promises.rm(doomed, { recursive: true, force: true });
-    fs.renameSync(dir, doomed);
+    await fs2.promises.rm(doomed, { recursive: true, force: true });
+    fs2.renameSync(dir, doomed);
   } catch {
-    if (fs.existsSync(dir)) {
+    if (fs2.existsSync(dir)) {
       addPending(dir);
       return "kept";
     }
@@ -36840,7 +37589,7 @@ async function removeRelease(dir) {
   dropPending(dir);
   addPending(doomed);
   try {
-    await fs.promises.rm(doomed, { recursive: true, force: true });
+    await fs2.promises.rm(doomed, { recursive: true, force: true });
     dropPending(doomed);
   } catch {
   }
@@ -36848,17 +37597,17 @@ async function removeRelease(dir) {
 }
 function pending() {
   try {
-    const list = JSON.parse(fs.readFileSync(PENDING_FILE, "utf8"));
+    const list = JSON.parse(fs2.readFileSync(PENDING_FILE, "utf8"));
     return Array.isArray(list) ? list.filter(
-      (d) => typeof d === "string" && [BROWSERS_DIR, OLD_BROWSERS_DIR].some((parent) => samePath(path.dirname(d), parent))
+      (d) => typeof d === "string" && [BROWSERS_DIR, OLD_BROWSERS_DIR].some((parent) => samePath(path2.dirname(d), parent))
     ) : [];
   } catch {
     return [];
   }
 }
 function setPending(list) {
-  if (list.length === 0) fs.rmSync(PENDING_FILE, { force: true });
-  else fs.writeFileSync(PENDING_FILE, JSON.stringify(list, null, 2));
+  if (list.length === 0) fs2.rmSync(PENDING_FILE, { force: true });
+  else fs2.writeFileSync(PENDING_FILE, JSON.stringify(list, null, 2));
 }
 function addPending(dir) {
   setPending([...pending().filter((d) => !samePath(d, dir)), dir]);
@@ -36874,10 +37623,10 @@ async function removePendingReleases() {
   for (const dir of list) {
     if (current2 && samePath(dir, current2.dir)) {
       dropPending(dir);
-    } else if (!fs.existsSync(dir)) {
+    } else if (!fs2.existsSync(dir)) {
       dropPending(dir);
     } else if (dir.endsWith("-removing")) {
-      await fs.promises.rm(dir, { recursive: true, force: true }).then(
+      await fs2.promises.rm(dir, { recursive: true, force: true }).then(
         () => dropPending(dir),
         () => {
         }
@@ -36897,63 +37646,63 @@ function moveOldRelease() {
   const old = readRecord(OLD_CURRENT_FILE);
   if (!old) return;
   const current2 = readRecord(CURRENT_FILE);
-  if (current2 && fs.existsSync(current2.exe)) return;
-  const from = path.join(OLD_BROWSERS_DIR, old.tag);
-  const to = path.join(BROWSERS_DIR, old.tag);
-  const inside = path.relative(from, old.exe);
-  if (inside.startsWith("..") || path.isAbsolute(inside)) return;
-  if (fs.existsSync(from)) {
-    if (fs.existsSync(to)) return;
+  if (current2 && fs2.existsSync(current2.exe)) return;
+  const from = path2.join(OLD_BROWSERS_DIR, old.tag);
+  const to = path2.join(BROWSERS_DIR, old.tag);
+  const inside = path2.relative(from, old.exe);
+  if (inside.startsWith("..") || path2.isAbsolute(inside)) return;
+  if (fs2.existsSync(from)) {
+    if (fs2.existsSync(to)) return;
     try {
-      fs.mkdirSync(BROWSERS_DIR, { recursive: true });
-      fs.renameSync(from, to);
+      fs2.mkdirSync(BROWSERS_DIR, { recursive: true });
+      fs2.renameSync(from, to);
     } catch {
       return;
     }
-  } else if (!fs.existsSync(path.join(to, inside))) {
+  } else if (!fs2.existsSync(path2.join(to, inside))) {
     return;
   }
-  const record2 = JSON.stringify({ tag: old.tag, exe: path.join(to, inside) }, null, 2);
-  fs.writeFileSync(CURRENT_FILE, record2);
-  fs.writeFileSync(OLD_CURRENT_FILE, record2);
+  const record2 = JSON.stringify({ tag: old.tag, exe: path2.join(to, inside) }, null, 2);
+  fs2.writeFileSync(CURRENT_FILE, record2);
+  fs2.writeFileSync(OLD_CURRENT_FILE, record2);
 }
 function moveOldProfiles() {
   let names;
   try {
-    names = fs.readdirSync(OLD_PROFILES_DIR);
+    names = fs2.readdirSync(OLD_PROFILES_DIR);
   } catch {
     return;
   }
-  fs.mkdirSync(PROFILES_DIR, { recursive: true });
+  fs2.mkdirSync(PROFILES_DIR, { recursive: true });
   for (const name of names) {
-    const from = path.join(OLD_PROFILES_DIR, name);
-    const to = path.join(PROFILES_DIR, name);
+    const from = path2.join(OLD_PROFILES_DIR, name);
+    const to = path2.join(PROFILES_DIR, name);
     try {
-      const stat = fs.statSync(from);
-      if (fs.existsSync(to) || !stat.isDirectory() || Date.now() - stat.mtimeMs < 6e5) continue;
+      const stat = fs2.statSync(from);
+      if (fs2.existsSync(to) || !stat.isDirectory() || Date.now() - stat.mtimeMs < 6e5) continue;
       if (profileInUse(from)) continue;
-      fs.renameSync(from, to);
+      fs2.renameSync(from, to);
     } catch {
     }
   }
 }
 function movedProfile(profile) {
-  if (fs.existsSync(profile) || !samePath(path.dirname(profile), OLD_PROFILES_DIR)) return profile;
-  const moved = path.join(PROFILES_DIR, path.basename(profile));
-  return fs.existsSync(moved) ? moved : profile;
+  if (fs2.existsSync(profile) || !samePath(path2.dirname(profile), OLD_PROFILES_DIR)) return profile;
+  const moved = path2.join(PROFILES_DIR, path2.basename(profile));
+  return fs2.existsSync(moved) ? moved : profile;
 }
 function sweepPageCounts() {
   let names;
   try {
-    names = fs.readdirSync(IDS_DIR);
+    names = fs2.readdirSync(IDS_DIR);
   } catch {
     return;
   }
   for (const name of names) {
-    const file2 = path.join(IDS_DIR, name);
+    const file2 = path2.join(IDS_DIR, name);
     if (COUNT_FILE && samePath(file2, COUNT_FILE)) continue;
     try {
-      if (Date.now() - fs.statSync(file2).mtimeMs > 30 * 24 * 36e5) fs.rmSync(file2, { force: true });
+      if (Date.now() - fs2.statSync(file2).mtimeMs > 30 * 24 * 36e5) fs2.rmSync(file2, { force: true });
     } catch {
     }
   }
@@ -36961,15 +37710,13 @@ function sweepPageCounts() {
 function removeOldRootIfEmpty() {
   for (const dir of [OLD_PROFILES_DIR, OLD_TEMP_PROFILES_DIR, OLD_BROWSERS_DIR, OLD_ROOT]) {
     try {
-      fs.rmdirSync(dir);
+      fs2.rmdirSync(dir);
     } catch {
     }
   }
 }
 
 // src/browser.ts
-var ToolError = class extends Error {
-};
 var MIN_MAJOR = 156;
 var BASE_SWITCHES = [
   "--remote-debugging-pipe",
@@ -37014,6 +37761,9 @@ var Tab = class {
   pointer = null;
   viewport = null;
   lastListingId = null;
+  // The options lastListingId was taken with: Page.captureAgentSnapshot's
+  // `since` only returns a delta when offscreenMode and scope match.
+  lastListingOptions = { offscreenMode: "summary", scope: "on" };
   // The letters of the page the tab's last listing showed (Browser.lettersFor).
   letters = "a";
   // When the main frame's latest cross-document load started, while it has
@@ -37095,6 +37845,7 @@ var Browser = class _Browser {
     this.temp = temp;
     this.headless = headless;
     this.downloads = downloads;
+    this.video = new VideoRecorder(conn);
     conn.on((e) => this.onEvent(e));
   }
   conn;
@@ -37118,6 +37869,7 @@ var Browser = class _Browser {
   seed = null;
   bundleActive = null;
   recordingId = null;
+  video;
   // Whether the browser has the commands newer than release 2.0.0 (canvas
   // text, the browser's own field reading, bursts as one command, its
   // clipboard): one probe on the first tab's session (probeModern).
@@ -37130,7 +37882,7 @@ var Browser = class _Browser {
         "No browser is installed. Call browser_install (it downloads about 1.6 GB, so ask the user first), or set the path of a chrome.exe in the plugin settings."
       );
     }
-    if (!fs2.existsSync(exe)) throw new ToolError(`The configured browser does not exist: ${exe}`);
+    if (!fs3.existsSync(exe)) throw new ToolError(`The configured browser does not exist: ${exe}`);
     let profile;
     const temp = options.profile === "temp";
     if (temp) {
@@ -37139,8 +37891,8 @@ var Browser = class _Browser {
     } else if (!options.profile || options.profile === "new") {
       profile = newProfileDir();
     } else {
-      profile = movedProfile(path2.resolve(options.profile));
-      if (!fs2.existsSync(profile)) {
+      profile = movedProfile(path3.resolve(options.profile));
+      if (!fs3.existsSync(profile)) {
         throw new ToolError(`No profile folder at ${profile}. Pass "new" for a new profile.`);
       }
       if (profileInUse(profile)) {
@@ -37163,12 +37915,12 @@ var Browser = class _Browser {
     try {
       launched = await launchOutsideTree(exe, args, temp ? profile : null);
     } catch (e) {
-      if (temp) fs2.rmSync(profile, { recursive: true, force: true });
+      if (temp) fs3.rmSync(profile, { recursive: true, force: true });
       throw e;
     }
     const { conn, pid } = launched;
-    const downloads = path2.join(profile, "Downloads");
-    fs2.mkdirSync(downloads, { recursive: true });
+    const downloads = path3.join(profile, "Downloads");
+    fs3.mkdirSync(downloads, { recursive: true });
     const browser2 = new _Browser(conn, pid, profile, temp, headless, downloads);
     try {
       const v = await conn.send("Browser.getVersion", {}, void 0, 2e4);
@@ -37201,6 +37953,7 @@ var Browser = class _Browser {
     const { targetId } = await this.conn.send("Target.createTarget", { url: url2, newWindow });
     const tab = await this.attach(targetId);
     this.activeTargetId = targetId;
+    await this.video.follow(targetId);
     if (!this.probed) {
       const modern = await probeModern(tab);
       if (modern !== null) {
@@ -37230,6 +37983,7 @@ var Browser = class _Browser {
     const tab = await this.tab(id2);
     await this.conn.send("Target.activateTarget", { targetId: tab.targetId });
     this.activeTargetId = tab.targetId;
+    await this.video.follow(tab.targetId);
     return tab;
   }
   listTabs() {
@@ -37283,16 +38037,18 @@ var Browser = class _Browser {
     if (this.closed) throw new ToolError("The browser has closed. Call browser_open.");
   }
   async close() {
-    if (this.closed) return;
+    if (this.closed) return null;
     if (this.recordingId) {
       await this.conn.send("Browser.stopRecording", { recordingId: this.recordingId }, void 0, 3e4).catch(() => {
       });
       this.recordingId = null;
     }
+    const videoSaved = await this.video.shutDown(3e4);
     await this.conn.send("Browser.close", {}, void 0, 5e3).catch(() => {
     });
     this.conn.close();
     this.closed = true;
+    return videoSaved;
   }
   async attach(targetId) {
     const { sessionId } = await this.conn.send("Target.attachToTarget", { targetId, flatten: true });
@@ -37306,6 +38062,7 @@ var Browser = class _Browser {
     switch (e.method) {
       case "Connection.closed":
         this.closed = true;
+        this.video.onConnectionClosed();
         return;
       case "Target.targetCreated":
       case "Target.targetInfoChanged": {
@@ -37338,6 +38095,9 @@ var Browser = class _Browser {
       case "Browser.recordingEnded":
         if (p.recordingId === this.recordingId) this.recordingId = null;
         if (p.reason !== "stopped") this.notices.push(`The recording ended by itself (${p.reason}): ${p.summary} Files: ${p.path}`);
+        return;
+      case "Browser.videoRecordingEnded":
+        this.video.onEnded(p);
         return;
     }
     const tab = [...this.tabs.values()].find((t) => t.sessionId === e.sessionId);
@@ -37379,7 +38139,7 @@ function nextPageNumber() {
     return underLock(file2, () => {
       let saved = 0;
       try {
-        const next = JSON.parse(fs2.readFileSync(file2, "utf8")).next;
+        const next = JSON.parse(fs3.readFileSync(file2, "utf8")).next;
         if (Number.isSafeInteger(next) && next > 0) saved = next;
         else noteCountTrouble("the saved count was unreadable");
       } catch (e) {
@@ -37388,8 +38148,8 @@ function nextPageNumber() {
       }
       const n = Math.max(saved, pagesCounted);
       const part = `${file2}.${process.pid}.part`;
-      fs2.writeFileSync(part, JSON.stringify({ next: n + 1 }));
-      fs2.renameSync(part, file2);
+      fs3.writeFileSync(part, JSON.stringify({ next: n + 1 }));
+      fs3.renameSync(part, file2);
       pagesCounted = n + 1;
       return n;
     });
@@ -37404,16 +38164,16 @@ function noteCountTrouble(reason) {
 }
 function underLock(file2, fn) {
   const lock = `${file2}.lock`;
-  fs2.mkdirSync(IDS_DIR, { recursive: true });
+  fs3.mkdirSync(IDS_DIR, { recursive: true });
   const until = Date.now() + 2e3;
   for (; ; ) {
     try {
-      fs2.closeSync(fs2.openSync(lock, "wx"));
+      fs3.closeSync(fs3.openSync(lock, "wx"));
       break;
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
       try {
-        if (Date.now() - fs2.statSync(lock).mtimeMs > 1e4) fs2.rmSync(lock, { force: true });
+        if (Date.now() - fs3.statSync(lock).mtimeMs > 1e4) fs3.rmSync(lock, { force: true });
       } catch {
       }
       if (Date.now() > until) throw new Error("another server of this session held the count's lock");
@@ -37423,7 +38183,7 @@ function underLock(file2, fn) {
   try {
     return fn();
   } finally {
-    fs2.rmSync(lock, { force: true });
+    fs3.rmSync(lock, { force: true });
   }
 }
 function pageOf(letters) {
@@ -37480,16 +38240,16 @@ function sweepTempProfiles() {
   for (const parent of [TEMP_PROFILES_DIR, OLD_TEMP_PROFILES_DIR]) {
     let entries;
     try {
-      entries = fs2.readdirSync(parent, { withFileTypes: true });
+      entries = fs3.readdirSync(parent, { withFileTypes: true });
     } catch {
       continue;
     }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const dir = path2.join(parent, entry.name);
+      const dir = path3.join(parent, entry.name);
       try {
-        if (Date.now() - fs2.statSync(dir).mtimeMs < 36e5 || profileInUse(dir)) continue;
-        fs2.rmSync(dir, { recursive: true, force: true });
+        if (Date.now() - fs3.statSync(dir).mtimeMs < 36e5 || profileInUse(dir)) continue;
+        fs3.rmSync(dir, { recursive: true, force: true });
       } catch {
       }
     }
@@ -37497,7 +38257,7 @@ function sweepTempProfiles() {
   removeOldRootIfEmpty();
 }
 async function launchOutsideTree(exe, args, tempProfile) {
-  const launcher = path2.join(path2.dirname(fileURLToPath(import.meta.url)), "launcher.mjs");
+  const launcher = path3.join(path3.dirname(fileURLToPath(import.meta.url)), "launcher.mjs");
   const temp = tempProfile ? ["--temp", tempProfile] : [];
   const proc = spawn(process.execPath, [launcher, ...temp, exe, ...args], {
     stdio: ["ignore", "pipe", "ignore", "pipe", "pipe"],
@@ -37519,21 +38279,28 @@ async function launchOutsideTree(exe, args, tempProfile) {
 }
 
 // src/canvas.ts
-var FORMAT = /[\u202A-\u202E\u2066-\u2069\u200E\u200F]/;
+var IGNORED = /[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B\u2060\uFEFF\u00AD\p{Co}]/u;
 async function readCanvas(tab) {
   return tab.send("Page.agentCanvasText", { inView: true }, 3e4);
 }
+var ZERO_ALPHA_COLOR = /^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\s*\))$/i;
 function piece(run2, canvas) {
+  if (run2.alpha === 0 || run2.color && ZERO_ALPHA_COLOR.test(run2.color.trim())) return null;
   let text2 = "";
   const map2 = [];
-  for (let i = 0; i < run2.text.length; i++) {
-    if (FORMAT.test(run2.text[i])) continue;
-    map2.push(i);
-    text2 += run2.text[i];
+  let lastEnd = 0;
+  for (let i = 0; i < run2.text.length; ) {
+    const cp = run2.text.codePointAt(i);
+    const len = cp > 65535 ? 2 : 1;
+    const ch = run2.text.slice(i, i + len);
+    if (!IGNORED.test(ch)) {
+      for (let j = 0; j < len; j++) map2.push(i + j);
+      text2 += ch;
+      lastEnd = i + len;
+    }
+    i += len;
   }
-  let end = run2.text.length;
-  while (end > 0 && FORMAT.test(run2.text[end - 1])) end--;
-  map2.push(end);
+  map2.push(lastEnd);
   return text2.trim() ? { run: run2, canvas, text: text2, map: map2 } : null;
 }
 var dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -37544,16 +38311,66 @@ function rotated(r) {
   if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return false;
   return dx <= 0 || Math.abs(dy) > dx * 0.02;
 }
+function dedup(pieces) {
+  const kept = [];
+  const buckets = /* @__PURE__ */ new Map();
+  const CELL = 4;
+  const better = (cand, cur) => {
+    const cs = !!cand.run.stroke;
+    const ks = !!cur.run.stroke;
+    if (cs !== ks) return !cs;
+    if (cand.run.exact !== cur.run.exact) return cand.run.exact;
+    return true;
+  };
+  for (const p of pieces) {
+    const { start, end } = p.run.baseline;
+    const gx = Math.floor(start.x / CELL);
+    const gy = Math.floor(start.y / CELL);
+    const ph = heightOf(p);
+    const pw = p.run.width;
+    let match = -1;
+    outer: for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const list = buckets.get(`${p.text}\0${gx + dx},${gy + dy}`);
+        if (!list) continue;
+        for (const idx of list) {
+          const q2 = kept[idx];
+          const h = Math.min(ph, heightOf(q2));
+          const w = Math.min(pw, q2.run.width);
+          const tol = Math.min(2, Math.max(0.5, 0.15 * h), w > 0 ? Math.max(0.5, 0.4 * w) : 2);
+          if (dist(start, q2.run.baseline.start) <= tol && dist(end, q2.run.baseline.end) <= tol) {
+            match = idx;
+            break outer;
+          }
+        }
+      }
+    }
+    if (match >= 0) {
+      if (better(p, kept[match])) kept[match] = p;
+    } else {
+      const idx = kept.length;
+      kept.push(p);
+      const key = `${p.text}\0${gx},${gy}`;
+      const list = buckets.get(key);
+      if (list) list.push(idx);
+      else buckets.set(key, [idx]);
+    }
+  }
+  return kept;
+}
 function linesOf(read) {
   const all = [];
   for (const canvas of read.canvases) {
     if (canvas.context !== "2d") continue;
-    const flat = [];
-    const lines = [];
+    const raw = [];
     for (const run2 of canvas.runs ?? []) {
       const p = piece(run2, canvas);
-      if (!p) continue;
-      if (rotated(run2)) lines.push({ y: Math.min(...run2.quad.map((q2) => q2.y)), h: 0, pieces: [p] });
+      if (p) raw.push(p);
+    }
+    const flat = [];
+    const lines = [];
+    for (const p of dedup(raw)) {
+      if (rotated(p.run)) lines.push({ y: Math.min(...p.run.quad.map((q2) => q2.y)), h: 0, pieces: [p] });
       else flat.push(p);
     }
     flat.sort((a, b) => a.run.baseline.start.y - b.run.baseline.start.y || a.run.baseline.start.x - b.run.baseline.start.x);
@@ -37588,18 +38405,22 @@ var MAX_SECTION_CHARS = 6e3;
 var MAX_LINE = 400;
 var MAX_CHANGED = 12;
 var shown = (s, max = MAX_LINE) => s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
+var UNTRACKED_BITMAP_NOTE = "A canvas in view received copied bitmap content whose text could not be tracked (untrackedBitmap): use view and points if text there is missing.";
 function notes(read, lines) {
   const out = [];
   const reasons = /* @__PURE__ */ new Set();
   for (const l of lines) for (const p of l.pieces) if (!p.run.exact) reasons.add(p.run.inexact ?? "inexact");
   if (reasons.size) out.push(`Some of this text is not exact (${[...reasons].join(", ")}): its places may be off.`);
   if (read.canvases.some((c) => c.truncated)) out.push("A canvas holds more than its record keeps (truncated): its oldest text is missing.");
+  if (read.canvases.some((c) => c.context === "2d" && c.untrackedBitmap)) out.push(UNTRACKED_BITMAP_NOTE);
   if (read.runsCut) out.push(`${read.runsCut} run(s) were left out past the answer's cap.`);
   if (read.framesLeftOut?.length) out.push(`${read.framesLeftOut.length} frame(s) did not answer; their canvases are left out.`);
   return out;
 }
 function canvasSection(read, lines) {
-  if (!lines.length) return [];
+  if (!lines.length) {
+    return read.canvases.some((c) => c.context === "2d" && c.untrackedBitmap) ? ["", UNTRACKED_BITMAP_NOTE] : [];
+  }
   const out = ["", "Canvas text in view:"];
   let size = 0;
   let n = 0;
@@ -37670,7 +38491,7 @@ function flowOf(lines) {
   }
   return flow;
 }
-var normalise = (s) => [...s].filter((c) => !FORMAT.test(c)).join("").replace(/\s+/g, " ");
+var normalise = (s) => [...s].filter((c) => !IGNORED.test(c)).join("").replace(/\s+/g, " ");
 function placeAt(flow, b) {
   if (b < flow.length && (flow[b].ch !== " " || b === 0)) return flow[b].start;
   return flow[b - 1].end;
@@ -38132,19 +38953,24 @@ async function settle2(tab, armId) {
     throw e;
   }
 }
+var DEFAULT_LISTING_OPTIONS = { offscreenMode: "summary", scope: "on" };
 async function capture(tab, params) {
-  const full = { format: "jpeg", quality: 80, scope: "on", ...params };
+  const full = { format: "jpeg", quality: 80, ...DEFAULT_LISTING_OPTIONS, ...params };
   try {
-    return await onActivePage(() => tab.send("Page.captureAgentSnapshot", full, 3e4));
+    const snap = await onActivePage(() => tab.send("Page.captureAgentSnapshot", full, 3e4));
+    return { snap, opts: { offscreenMode: full.offscreenMode, scope: full.scope } };
   } catch (e) {
     if (!(e instanceof CdpError) || !/changed document during the capture/.test(e.message)) throw e;
     await settle2(tab);
-    return onActivePage(() => tab.send("Page.captureAgentSnapshot", full, 3e4));
+    const retry = params.since ? { format: "jpeg", quality: 80, ...DEFAULT_LISTING_OPTIONS } : full;
+    const snap = await onActivePage(() => tab.send("Page.captureAgentSnapshot", retry, 3e4));
+    return { snap, opts: { offscreenMode: retry.offscreenMode, scope: retry.scope } };
   }
 }
-function remember(tab, snap) {
+function remember(tab, snap, opts = DEFAULT_LISTING_OPTIONS) {
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
   tab.lastListingId = snap.listingId;
+  tab.lastListingOptions = { ...opts };
   const shown2 = pageOf(tab.letters)?.shown;
   for (const e of snap.elements ?? []) {
     if (shown2 && e.label && shown2.has(e.label)) shown2.set(e.label, { role: e.role, name: e.name, reads: e.reads });
@@ -38214,14 +39040,19 @@ async function afterAction(tab, said, outcome, quiet2 = false) {
   for (const ev of outcome?.events ?? []) lines.push(`It led to ${describeEvent(ev)}.`);
   const work = (async () => {
     const report = await settle2(tab, outcome?.actionId);
-    const snap = await capture(tab, tab.lastListingId ? { since: tab.lastListingId } : {});
-    return { report, snap };
+    const opts = tab.lastListingId ? tab.lastListingOptions : DEFAULT_LISTING_OPTIONS;
+    const nonDefault = opts.offscreenMode !== DEFAULT_LISTING_OPTIONS.offscreenMode || opts.scope !== DEFAULT_LISTING_OPTIONS.scope;
+    let captured = await capture(tab, tab.lastListingId ? { since: tab.lastListingId, ...opts } : {});
+    if (nonDefault && (!captured.snap.delta || captured.snap.baseline === false)) {
+      captured = await capture(tab, {});
+    }
+    return { report, snap: captured.snap, opts: captured.opts };
   })();
   const r = await tab.untilDialog(work);
   if (r === "dialog") return [...lines, ...noticesOf(tab), dialogLine(tab)].join("\n");
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
-  const id2 = remember(tab, r.snap);
+  const id2 = remember(tab, r.snap, r.opts);
   const whole = !quiet2 && (!r.snap.delta || r.snap.baseline === false);
   const change = quiet2 ? formatQuietChange(r.snap, tab.letters) : formatChange(r.snap, tab.id, tab.letters, shownOn(tab));
   lines.push(...noticesOf(tab), "", change, ...await canvasAfter(tab, whole));
@@ -38230,8 +39061,8 @@ async function afterAction(tab, said, outcome, quiet2 = false) {
 async function observe(tab, offscreen, scope) {
   assertNoDialog(tab);
   await settle2(tab);
-  const snap = await capture(tab, { offscreenMode: offscreen ?? "summary", scope: scope ?? "on" });
-  const id2 = remember(tab, snap);
+  const { snap, opts } = await capture(tab, { offscreenMode: offscreen ?? "summary", scope: scope ?? "on" });
+  const id2 = remember(tab, snap, opts);
   const listing = formatListing(snap, tab.id, tab.letters, shownOn(tab));
   return withSnapshotId([...noticesOf(tab), listing, ...await canvasListing(tab)].join("\n"), id2);
 }
@@ -39114,7 +39945,7 @@ function keystrokesCall(o) {
     thinkingPauseMin: 300,
     thinkingPauseMax: 800,
     typoProbability: typos,
-    ...typos ? { noTypos: NO_TYPOS } : {},
+    ...typos ? { noTypos: NO_TYPOS } : { typosAllowed: false },
     ...o.seed !== void 0 ? { seed: o.seed } : {}
   };
   let budget = 3e4;
@@ -39167,7 +39998,7 @@ function keyTimesLine(notBefore2, r) {
   return `Ran from ${iso(first)} (the first key down${late2}) to ${iso(last)} (the last key up), ${Math.round(last - first)} ms.`;
 }
 function appendKeyLog(file2, r, dryRun) {
-  const target = path3.resolve(file2);
+  const target = path4.resolve(file2);
   const events = r.timeline ?? [];
   const entry = {
     ...dryRun ? { dryRun: true } : {},
@@ -39181,8 +40012,8 @@ function appendKeyLog(file2, r, dryRun) {
     events
   };
   try {
-    fs3.mkdirSync(path3.dirname(target), { recursive: true });
-    fs3.appendFileSync(target, JSON.stringify(entry) + "\n");
+    fs4.mkdirSync(path4.dirname(target), { recursive: true });
+    fs4.appendFileSync(target, JSON.stringify(entry) + "\n");
     return `Logged ${events.length} key event(s)${dryRun ? " as planned" : ""} to ${target}.`;
   } catch (e) {
     return `The key log could not be written to ${target}: ${e instanceof Error ? e.message : String(e)}`;
@@ -39198,9 +40029,10 @@ async function planOnly(tab, o) {
   const span = downs.length && ups.length ? ups.reduce((m, t) => Math.max(m, t), -Infinity) - downs.reduce((m, t) => Math.min(m, t), Infinity) : 0;
   const whole = typeof r.durationMs === "number" && Math.abs(r.durationMs - span) > 1 ? `; the plan's whole length with its pauses is ${Math.round(r.durationMs)} ms` : "";
   const typos = r.typosCorrected ? `, ${r.typosCorrected} typo(s) made and corrected` : "";
+  const fieldNote = o.plan || o.exact ? "" : " (the typo decision follows the focused field, so type into one of the same kind)";
   const lines = [
     `Planned, nothing sent: from its first key down to its last key up it would take ${(span / 1e3).toFixed(2)} s (${Math.round(span)} ms${whole}), ${tl.length} key event(s)${typos}.`,
-    `Seed ${r.seed} (${typosWords(r)}): pass it back as seed, with the same text or keys and speed, for this schedule (the typo decision follows the focused field, so type into one of the same kind).`
+    `Seed ${r.seed} (${typosWords(r)}): pass it back as seed, with the same text or keys and speed, for this schedule${fieldNote}.`
   ];
   if (o.keyLog !== void 0) lines.push(appendKeyLog(o.keyLog, r, true));
   return lines.join("\n");
@@ -39401,12 +40233,16 @@ async function navigate(tab, opts) {
   }
   const lines = [said];
   const r = await tab.untilDialog(
-    (async () => ({ report: await settle2(tab, armId), snap: await capture(tab, {}) }))()
+    (async () => {
+      const report = await settle2(tab, armId);
+      const { snap, opts: opts2 } = await capture(tab, {});
+      return { report, snap, opts: opts2 };
+    })()
   );
   if (r === "dialog") return [...lines, ...noticesOf(tab), dialogLine(tab)].join("\n");
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
-  const id2 = remember(tab, r.snap);
+  const id2 = remember(tab, r.snap, r.opts);
   lines.push(...noticesOf(tab), "", formatListing(r.snap, tab.id, tab.letters, shownOn(tab)), ...await canvasListing(tab));
   return withSnapshotId(lines.join("\n"), id2);
 }
@@ -39422,9 +40258,9 @@ async function screenshot(tab, file2, fullPage = false) {
   const r = await onActivePage(
     () => tab.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: fullPage }, 6e4)
   );
-  const target = path3.resolve(file2 ?? path3.join(process.cwd(), "screenshots", `${tab.id}-${Date.now()}.png`));
-  fs3.mkdirSync(path3.dirname(target), { recursive: true });
-  fs3.writeFileSync(target, Buffer.from(r.data, "base64"));
+  const target = path4.resolve(file2 ?? path4.join(process.cwd(), "screenshots", `${tab.id}-${Date.now()}.png`));
+  fs4.mkdirSync(path4.dirname(target), { recursive: true });
+  fs4.writeFileSync(target, Buffer.from(r.data, "base64"));
   return `Saved ${fullPage ? "the whole page" : "the view"} to ${target}`;
 }
 async function evaluate(tab, expression) {
@@ -39481,7 +40317,7 @@ async function pickColor(tab, id2, value) {
   return afterAction(tab, [r.outcome === "already" ? `${id2} already held ${value}.` : `Picked ${value} in ${id2}.`], r.actionOutcome);
 }
 async function upload(tab, id2, files) {
-  const absolute = files.map((f) => path3.resolve(f));
+  const absolute = files.map((f) => path4.resolve(f));
   const { r, refused } = await handCommand(tab, id2, "Input.chooseFiles", { files: absolute }, ["chosen"], 13e4);
   if (refused) return refused + (r?.opener ? ` Try the element that opens it: ${r.opener}.` : "");
   const field = r.field ? ` (${r.field}${r.accept ? `, accepts ${r.accept}` : ""})` : "";
@@ -39598,20 +40434,20 @@ async function paste(tab, text2, id2, opts = {}) {
 }
 
 // src/browser_tools.ts
-import fs4 from "node:fs";
-import path4 from "node:path";
-var stamp = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+import fs5 from "node:fs";
+import path5 from "node:path";
+var stamp2 = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
 async function fetchUrl(b, o) {
   const url2 = withScheme(o.url);
-  const saveTo = o.save_to ? path4.resolve(o.save_to) : null;
+  const saveTo = o.save_to ? path5.resolve(o.save_to) : null;
   if (saveTo) {
-    if (fs4.existsSync(saveTo)) {
+    if (fs5.existsSync(saveTo)) {
       throw new ToolError(`${saveTo} already exists; save_to never replaces a file. Name a new one. Nothing was fetched.`);
     }
     try {
-      fs4.mkdirSync(path4.dirname(saveTo), { recursive: true });
+      fs5.mkdirSync(path5.dirname(saveTo), { recursive: true });
     } catch (e) {
-      throw new ToolError(`The folder for save_to, ${path4.dirname(saveTo)}, cannot be made (${errWords(e)}). Nothing was fetched.`);
+      throw new ToolError(`The folder for save_to, ${path5.dirname(saveTo)}, cannot be made (${errWords(e)}). Nothing was fetched.`);
     }
   }
   const r = await b.conn.send(
@@ -39647,11 +40483,11 @@ async function fetchUrl(b, o) {
   const max = o.max_chars ?? 4e4;
   let shown2 = body;
   if (body.length > max) {
-    const file2 = path4.join(b.profile, "fetched", `${stamp()}.${r.markdown ? "md" : "txt"}`);
+    const file2 = path5.join(b.profile, "fetched", `${stamp2()}.${r.markdown ? "md" : "txt"}`);
     let rest;
     try {
-      fs4.mkdirSync(path4.dirname(file2), { recursive: true });
-      fs4.writeFileSync(file2, body);
+      fs5.mkdirSync(path5.dirname(file2), { recursive: true });
+      fs5.writeFileSync(file2, body);
       rest = `the whole text is in ${file2}`;
     } catch (e) {
       rest = `they could not be kept in ${file2} (${errWords(e)})`;
@@ -39682,7 +40518,7 @@ function saveLine(saveTo, r) {
   const what = r.text !== void 0 ? "the response's text" : 'the page rendered as Markdown (mode "raw" saves the HTML as it came)';
   const cut2 = r.truncated ? `; the browser cut ${r.text !== void 0 ? "the body" : "the page"} short, so this is not the whole of it` : "";
   try {
-    fs4.writeFileSync(saveTo, asText, { flag: "wx" });
+    fs5.writeFileSync(saveTo, asText, { flag: "wx" });
     return `Saved ${what} to ${saveTo} (${Buffer.byteLength(asText)} bytes${cut2}).`;
   } catch (e) {
     return `The body could not be saved to ${saveTo} (${errWords(e)}); nothing was saved, and the response follows as it came.`;
@@ -39690,7 +40526,7 @@ function saveLine(saveTo, r) {
 }
 async function recordStart(b, o) {
   if (b.recordingId) throw new ToolError("A recording is already running; call record_stop first.");
-  const dir = path4.resolve(o.path ?? path4.join(process.cwd(), "recordings", `rec-${stamp()}`));
+  const dir = path5.resolve(o.path ?? path5.join(process.cwd(), "recordings", `rec-${stamp2()}`));
   const r = await b.conn.send("Browser.startRecording", {
     level: o.level ?? "network",
     path: dir,
@@ -39706,7 +40542,7 @@ async function recordStop(b) {
   b.recordingId = null;
   const lines = [`Stopped. ${r.summary}`, `Files: ${r.path} (recording.har, requests.txt to grep, summary.md)`];
   try {
-    const summary = fs4.readFileSync(path4.join(r.path, "summary.md"), "utf8");
+    const summary = fs5.readFileSync(path5.join(r.path, "summary.md"), "utf8");
     lines.push("", summary.length > 6e3 ? `${summary.slice(0, 6e3)}
 \u2026 (the rest is in summary.md)` : summary);
   } catch {
@@ -39738,8 +40574,8 @@ async function fingerprint(b, full = false) {
 // src/install.ts
 import { spawn as spawn2 } from "node:child_process";
 import { createHash } from "node:crypto";
-import fs5 from "node:fs";
-import path5 from "node:path";
+import fs6 from "node:fs";
+import path6 from "node:path";
 import { Readable } from "node:stream";
 var RELEASES = "https://api.github.com/repos/nodriver-project/Chromaphore-Browser/releases/latest";
 var PORTABLE_ZIP = /^(?:Chromaphore|Chromeleon)-\d+\.\d+\.\d+-chromium[\d.]+-windows-x64-portable\.zip$/;
@@ -39760,12 +40596,12 @@ async function latestRelease() {
   return { tag: rel.tag_name, asset };
 }
 function findExe(dir, depth = 3) {
-  const direct = path5.join(dir, "chrome.exe");
-  if (fs5.existsSync(direct)) return direct;
+  const direct = path6.join(dir, "chrome.exe");
+  if (fs6.existsSync(direct)) return direct;
   if (depth === 0) return null;
-  for (const entry of fs5.readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of fs6.readdirSync(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const found = findExe(path5.join(dir, entry.name), depth - 1);
+    const found = findExe(path6.join(dir, entry.name), depth - 1);
     if (found) return found;
   }
   return null;
@@ -39776,18 +40612,18 @@ function run(cmd, args) {
     let err = "";
     p.stderr.on("data", (c) => err += c);
     p.on("error", reject);
-    p.on("exit", (code) => code === 0 ? resolve2() : reject(new Error(`${path5.basename(cmd)} failed: ${err.trim()}`)));
+    p.on("exit", (code) => code === 0 ? resolve2() : reject(new Error(`${path6.basename(cmd)} failed: ${err.trim()}`)));
   });
 }
 async function checkInstall() {
   const lines = [];
   const configured = configuredBrowser();
   if (configured) {
-    const there = fs5.existsSync(configured) ? "" : " (that file does not exist)";
+    const there = fs6.existsSync(configured) ? "" : " (that file does not exist)";
     lines.push(`The plugin settings name a browser of their own: ${configured}${there}. browser_open uses it, not an installed release.`);
   }
   const current2 = installedBrowser();
-  const currentOk = current2 !== null && fs5.existsSync(current2.exe);
+  const currentOk = current2 !== null && fs6.existsSync(current2.exe);
   if (current2 && currentOk) lines.push(`Installed: release ${current2.tag} (${current2.exe}).`);
   else if (current2) lines.push(`The install record names release ${current2.tag}, but its chrome.exe is gone (${current2.exe}).`);
   else lines.push("No release is installed.");
@@ -39809,15 +40645,15 @@ async function checkInstall() {
 async function install(progress, signal) {
   const { tag, asset } = await latestRelease();
   const current2 = installedBrowser();
-  const dir = path5.join(BROWSERS_DIR, tag);
-  if (current2?.tag === tag && fs5.existsSync(current2.exe)) return `Release ${tag} is already installed: ${current2.exe}`;
-  fs5.mkdirSync(DATA_ROOT, { recursive: true });
-  const zip = path5.join(DATA_ROOT, `${asset.name}.part`);
+  const dir = path6.join(BROWSERS_DIR, tag);
+  if (current2?.tag === tag && fs6.existsSync(current2.exe)) return `Release ${tag} is already installed: ${current2.exe}`;
+  fs6.mkdirSync(DATA_ROOT, { recursive: true });
+  const zip = path6.join(DATA_ROOT, `${asset.name}.part`);
   const res = await fetch(asset.browser_download_url, { signal });
   if (!res.ok || !res.body) throw new ToolError(`The download answered ${res.status}.`);
   const total = Number(res.headers.get("content-length")) || asset.size;
   const hash2 = createHash("sha256");
-  const out = fs5.createWriteStream(zip);
+  const out = fs6.createWriteStream(zip);
   let done = 0;
   let lastReport = 0;
   for await (const chunk of Readable.fromWeb(res.body)) {
@@ -39832,34 +40668,34 @@ async function install(progress, signal) {
   await new Promise((resolve2, reject) => out.end((e) => e ? reject(e) : resolve2()));
   const sha = hash2.digest("hex");
   if (asset.digest && asset.digest !== `sha256:${sha}`) {
-    fs5.rmSync(zip, { force: true });
+    fs6.rmSync(zip, { force: true });
     throw new ToolError(`The download's SHA-256 (${sha}) does not match the release's (${asset.digest}). Nothing was installed.`);
   }
   progress(total, total, "Unpacking");
-  fs5.rmSync(dir, { recursive: true, force: true });
-  fs5.mkdirSync(dir, { recursive: true });
-  const tar = path5.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+  fs6.rmSync(dir, { recursive: true, force: true });
+  fs6.mkdirSync(dir, { recursive: true });
+  const tar = path6.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
   await run(tar, ["-xf", zip, "-C", dir]);
-  fs5.rmSync(zip, { force: true });
+  fs6.rmSync(zip, { force: true });
   const exe = findExe(dir);
   if (!exe) throw new ToolError(`No chrome.exe in the unpacked release under ${dir}.`);
   const replaced = installedBrowser();
-  fs5.writeFileSync(CURRENT_FILE, JSON.stringify({ tag, exe }, null, 2));
+  fs6.writeFileSync(CURRENT_FILE, JSON.stringify({ tag, exe }, null, 2));
   const lines = [`Installed release ${tag} (SHA-256 checked${asset.digest ? "" : ": none published, so not compared"}): ${exe}`];
-  if (replaced && path5.resolve(replaced.dir).toLowerCase() !== path5.resolve(dir).toLowerCase() && fs5.existsSync(replaced.dir)) {
+  if (replaced && path6.resolve(replaced.dir).toLowerCase() !== path6.resolve(dir).toLowerCase() && fs6.existsSync(replaced.dir)) {
     if (await removeRelease(replaced.dir) === "kept") {
       lines.push(
         `The replaced release's folder is in use (a browser still running from it, or another program), so it stays for now and is deleted at a later start of the plugin: ${replaced.dir}`
       );
     }
   }
-  fs5.rmSync(OLD_CURRENT_FILE, { force: true });
+  fs6.rmSync(OLD_CURRENT_FILE, { force: true });
   removeOldRootIfEmpty();
   return lines.join("\n");
 }
 
 // src/server.ts
-var VERSION = "0.4.0";
+var VERSION = "0.5.0";
 var REPLAY = /^(true|1)$/i.test((process.env.CHROMAPHORE_REPLAY_OPTIONS ?? "").trim());
 var SETTING = `the plugin's "Replay options" setting (replay_options)`;
 var REPLAY_GUIDE = `The replay options are on, for input whose time or text a pipeline of your own planned. not_before (type, press, paste) holds the first key or paste until a time at most 15 minutes ahead: place the caret first (the click into id happens at once; click a point in an earlier call), so only the keys wait. Everything that can be refused (the time, the burst's steps and text check, the expect_focus id) is refused before the wait; the focus itself is checked after the wait, right before the first key, and cancelling during the wait sends nothing. seed on type: the same seed, text and speed repeat the rhythm of the typed strings and the gaps between a burst's steps, but not the timing of key presses and Backspaces, which the browser draws afresh each call; on a build newer than release 2.0.0 a burst is one schedule, and the seed fixes all of it. type with both keys and text checks, before any key, that the burst leaves exactly text: a plain Enter, Tab or Space press counts as its character and a plain Backspace as one bs; a burst with presses the check cannot follow (arrows, Delete, Ctrl+A, Ctrl+V, Ctrl+Z) or with Backspaces reaching before its start is refused, so leave text out to play it unchecked. On a build newer than release 2.0.0 type also takes dry_run, which plans the text or burst and sends nothing (not with id, clear, submit, not_before or expect_focus), answering its length from first key to last and the seed that gives that schedule, and key_log, a file each call appends one JSON line of its key events to; with not_before or key_log the answer times the first key down and the last key up, and every type answer says the seed used.`;
@@ -39875,7 +40711,7 @@ Where there is no element to aim at, such as text an editor draws itself (Google
 ${REPLAY ? `
 ${REPLAY_GUIDE}
 ` : ""}
-Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. clipboard reads or sets the browser's own clipboard. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
+Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. clipboard reads or sets the browser's own clipboard. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. To record a tab to MP4 video with a timeline sidecar, use video_start, video_pause, video_resume, video_mark and video_stop. The skill chromaphore:browser has more.`;
 var server = new McpServer({ name: "browser", version: VERSION }, { instructions: INSTRUCTIONS });
 var browser = null;
 var text = (t, isError = false) => ({ content: [{ type: "text", text: t }], ...isError ? { isError } : {} });
@@ -39883,15 +40719,37 @@ function current() {
   if (!browser || browser.closed) throw new ToolError("No browser is open. Call browser_open.");
   return browser;
 }
-async function guard(fn) {
+function withNotice(r, notice) {
+  if (!notice) return r;
+  const i = r.content.findIndex((c) => c.type === "text");
+  if (i >= 0) {
+    const content = r.content.slice();
+    const cur = content[i];
+    content[i] = { type: "text", text: `${notice}
+${cur.text}` };
+    return { ...r, content };
+  }
+  return { ...r, content: [{ type: "text", text: notice }, ...r.content] };
+}
+async function guard(fn, opts) {
+  const b = browser && !browser.closed ? browser : null;
+  const markTool = opts?.videoTool && b ? opts.videoTool : null;
+  if (markTool) await b.video.toolStarted(markTool);
+  let res;
   try {
     const r = await fn();
-    return typeof r === "string" ? text(r) : r;
+    res = typeof r === "string" ? text(r) : r;
   } catch (e) {
-    if (e instanceof ToolError) return text(e.message, true);
-    if (e instanceof CdpError) return text(`${e.method} failed: ${e.message}`, true);
-    return text(e instanceof Error ? e.message : String(e), true);
+    if (e instanceof ToolError) res = text(e.message, true);
+    else if (e instanceof CdpError) res = text(`${e.method} failed: ${e.message}`, true);
+    else res = text(e instanceof Error ? e.message : String(e), true);
   }
+  if (markTool) await b.video.toolEnded(markTool, !res.isError);
+  if (!opts?.isVideoStop) {
+    const active = browser && !browser.closed ? browser : b;
+    res = withNotice(res, active?.video.takeEndedNotice() ?? null);
+  }
+  return res;
 }
 var id = external_exports.string().describe("An element id from a listing, such as a12.");
 var px = (what) => external_exports.number().describe(`${what}, in CSS pixels of the view; with snapshot_id, in pixels of that snapshot's image.`);
@@ -39986,11 +40844,13 @@ server.registerTool(
   },
   () => guard(async () => {
     if (!browser || browser.closed) return "No browser is open.";
-    await browser.close();
-    if (!browser.temp) return `Closed. Profile kept at ${browser.profile}`;
+    const videoSaved = await browser.close();
+    const suffix = videoSaved ? `
+${videoSaved}` : "";
+    if (!browser.temp) return `Closed. Profile kept at ${browser.profile}${suffix}`;
     const deadline = Date.now() + 1e4;
-    while (fs6.existsSync(browser.profile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
-    return fs6.existsSync(browser.profile) ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).` : "Closed. The temporary profile is deleted.";
+    while (fs7.existsSync(browser.profile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
+    return (fs7.existsSync(browser.profile) ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).` : "Closed. The temporary profile is deleted.") + suffix;
   })
 );
 server.registerTool(
@@ -40009,10 +40869,13 @@ server.registerTool(
     description: "Opens a tab and selects it; the other tools act on the selected tab.",
     inputSchema: { url: external_exports.string().optional() }
   },
-  (args) => guard(async () => {
-    const tab = await current().newTab();
-    return args.url ? navigate(tab, { url: args.url }) : `Tab ${tab.id} is open and selected.`;
-  })
+  (args) => guard(
+    async () => {
+      const tab = await current().newTab();
+      return args.url ? navigate(tab, { url: args.url }) : `Tab ${tab.id} is open and selected.`;
+    },
+    { videoTool: "tab_new" }
+  )
 );
 server.registerTool(
   "tab_select",
@@ -40021,15 +40884,18 @@ server.registerTool(
     description: "Brings a tab to the front and makes it the one the other tools act on. Tabs the page opened appear in tab_list.",
     inputSchema: { tab: external_exports.string().describe("A tab id from tab_list, such as t2.") }
   },
-  (args) => guard(async () => observe(await current().select(args.tab)))
+  (args) => guard(async () => observe(await current().select(args.tab)), { videoTool: "tab_select" })
 );
 server.registerTool(
   "tab_close",
   { title: "Close a tab", description: "Closes a tab.", inputSchema: { tab: external_exports.string() } },
-  (args) => guard(async () => {
-    await current().closeTab(args.tab);
-    return `Closed ${args.tab}.`;
-  })
+  (args) => guard(
+    async () => {
+      await current().closeTab(args.tab);
+      return `Closed ${args.tab}.`;
+    },
+    { videoTool: "tab_close" }
+  )
 );
 server.registerTool(
   "navigate",
@@ -40041,10 +40907,13 @@ server.registerTool(
       action: external_exports.enum(["back", "forward", "reload"]).optional().describe("Instead of a URL.")
     }
   },
-  (args) => guard(async () => {
-    if (!args.url && !args.action) throw new ToolError("Give a url or an action.");
-    return navigate(await current().tab(), args);
-  })
+  (args) => guard(
+    async () => {
+      if (!args.url && !args.action) throw new ToolError("Give a url or an action.");
+      return navigate(await current().tab(), args);
+    },
+    { videoTool: "navigate" }
+  )
 );
 server.registerTool(
   "observe",
@@ -40098,13 +40967,16 @@ server.registerTool(
       quiet
     }
   },
-  (args) => guard(async () => {
-    const tab = await current().tab();
-    const place2 = textPlace(args, "Click");
-    if (place2) return clickText(tab, place2, args);
-    const p = inView(tab, point(args, "Click"), args.snapshot_id);
-    return p ? clickAt(tab, p, args) : click(tab, args.id, args);
-  })
+  (args) => guard(
+    async () => {
+      const tab = await current().tab();
+      const place2 = textPlace(args, "Click");
+      if (place2) return clickText(tab, place2, args);
+      const p = inView(tab, point(args, "Click"), args.snapshot_id);
+      return p ? clickAt(tab, p, args) : click(tab, args.id, args);
+    },
+    { videoTool: "click" }
+  )
 );
 server.registerTool(
   "hover",
@@ -40120,13 +40992,16 @@ server.registerTool(
       snapshot_id: snapshotId
     }
   },
-  (args) => guard(async () => {
-    const tab = await current().tab();
-    const place2 = textPlace(args, "Hover over");
-    if (place2) return hoverText(tab, place2);
-    const p = inView(tab, point(args, "Hover"), args.snapshot_id);
-    return p ? hoverAt(tab, p) : hover(tab, args.id);
-  })
+  (args) => guard(
+    async () => {
+      const tab = await current().tab();
+      const place2 = textPlace(args, "Hover over");
+      if (place2) return hoverText(tab, place2);
+      const p = inView(tab, point(args, "Hover"), args.snapshot_id);
+      return p ? hoverAt(tab, p) : hover(tab, args.id);
+    },
+    { videoTool: "hover" }
+  )
 );
 server.registerTool(
   "type",
@@ -40162,21 +41037,24 @@ server.registerTool(
       })
     })
   },
-  (args, extra) => guard(async () => {
-    refuseReplay(args, ["not_before", "seed", "dry_run", "key_log"]);
-    if (!REPLAY && args.text !== void 0 && args.keys) {
-      throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
-    }
-    return type(await current().tab(), {
-      ...args,
-      notBefore: parseNotBefore(args.not_before),
-      expectFocus: args.expect_focus,
-      signal: extra.signal,
-      dryRun: args.dry_run,
-      keyLog: args.key_log,
-      replay: REPLAY
-    });
-  })
+  (args, extra) => guard(
+    async () => {
+      refuseReplay(args, ["not_before", "seed", "dry_run", "key_log"]);
+      if (!REPLAY && args.text !== void 0 && args.keys) {
+        throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
+      }
+      return type(await current().tab(), {
+        ...args,
+        notBefore: parseNotBefore(args.not_before),
+        expectFocus: args.expect_focus,
+        signal: extra.signal,
+        dryRun: args.dry_run,
+        keyLog: args.key_log,
+        replay: REPLAY
+      });
+    },
+    { videoTool: args.dry_run ? void 0 : "type" }
+  )
 );
 server.registerTool(
   "press",
@@ -40191,15 +41069,18 @@ server.registerTool(
       quiet
     })
   },
-  (args, extra) => guard(async () => {
-    refuseReplay(args, ["not_before"]);
-    return press(await current().tab(), args.keys, args.times, {
-      notBefore: parseNotBefore(args.not_before),
-      expectFocus: args.expect_focus,
-      quiet: args.quiet,
-      signal: extra.signal
-    });
-  })
+  (args, extra) => guard(
+    async () => {
+      refuseReplay(args, ["not_before"]);
+      return press(await current().tab(), args.keys, args.times, {
+        notBefore: parseNotBefore(args.not_before),
+        expectFocus: args.expect_focus,
+        quiet: args.quiet,
+        signal: extra.signal
+      });
+    },
+    { videoTool: "press" }
+  )
 );
 server.registerTool(
   "scroll",
@@ -40214,7 +41095,7 @@ server.registerTool(
       quiet
     }
   },
-  (args) => guard(async () => scroll(await current().tab(), args))
+  (args) => guard(async () => scroll(await current().tab(), args), { videoTool: "scroll" })
 );
 server.registerTool(
   "dialog",
@@ -40223,7 +41104,7 @@ server.registerTool(
     description: "Accepts or dismisses the alert, confirm, prompt or leave-page dialog open on the selected tab.",
     inputSchema: { accept: external_exports.boolean(), text: external_exports.string().optional().describe("A prompt dialog's answer.") }
   },
-  (args) => guard(async () => answerDialog(await current().tab(), args.accept, args.text))
+  (args) => guard(async () => answerDialog(await current().tab(), args.accept, args.text), { videoTool: "dialog" })
 );
 server.registerTool(
   "screenshot",
@@ -40244,10 +41125,13 @@ server.registerTool(
     description: "Evaluates an expression in the page's main world and answers with its value as JSON (promises are awaited). For reading app state or the DOM; prefer click and type for input, which pages see as real.",
     inputSchema: { expression: external_exports.string() }
   },
-  (args) => guard(async () => {
-    const r = await evaluate(await current().tab(), args.expression);
-    return text(r.text, r.isError);
-  })
+  (args) => guard(
+    async () => {
+      const r = await evaluate(await current().tab(), args.expression);
+      return text(r.text, r.isError);
+    },
+    { videoTool: "eval_js" }
+  )
 );
 server.registerTool(
   "select",
@@ -40256,7 +41140,7 @@ server.registerTool(
     description: "Picks options in a <select> the way a person does (opens its list and clicks, or uses the keys when the list cannot open). values: one for a dropdown, the exact set for a multiple list; each matches an option by its visible text or its value. A wrong value is refused with the options there are.",
     inputSchema: { id, values: external_exports.array(external_exports.string()).min(1) }
   },
-  (args) => guard(async () => select(await current().tab(), args.id, args.values))
+  (args) => guard(async () => select(await current().tab(), args.id, args.values), { videoTool: "select" })
 );
 server.registerTool(
   "fill_date",
@@ -40265,7 +41149,7 @@ server.registerTool(
     description: "Fills an input of type date, time, datetime-local, month or week part by part, as typed by a person. value as the field's value attribute takes it: 2024-05-03, 14:30, 2024-05-03T14:30, 2024-05, 2024-W18.",
     inputSchema: { id, value: external_exports.string() }
   },
-  (args) => guard(async () => fillDate(await current().tab(), args.id, args.value))
+  (args) => guard(async () => fillDate(await current().tab(), args.id, args.value), { videoTool: "fill_date" })
 );
 server.registerTool(
   "pick_color",
@@ -40274,7 +41158,7 @@ server.registerTool(
     description: "Sets an input of type color through its own picker. value as #rrggbb.",
     inputSchema: { id, value: external_exports.string().regex(/^#[0-9a-fA-F]{6}$/) }
   },
-  (args) => guard(async () => pickColor(await current().tab(), args.id, args.value))
+  (args) => guard(async () => pickColor(await current().tab(), args.id, args.value), { videoTool: "pick_color" })
 );
 server.registerTool(
   "upload",
@@ -40283,7 +41167,7 @@ server.registerTool(
     description: "Clicks a file field (or the button or label that opens one) and answers its file chooser with these files, as a person picking them would. Paths are on this machine; relative ones are from the working folder. For a folder field, one folder.",
     inputSchema: { id, files: external_exports.array(external_exports.string()).min(1) }
   },
-  (args) => guard(async () => upload(await current().tab(), args.id, args.files))
+  (args) => guard(async () => upload(await current().tab(), args.id, args.files), { videoTool: "upload" })
 );
 server.registerTool(
   "drag",
@@ -40307,21 +41191,24 @@ server.registerTool(
       quiet
     }
   },
-  (args) => guard(async () => {
-    const tab = await current().tab();
-    if (args.select !== void 0) {
-      const other = ["from", "from_x", "from_y", "to", "x", "y", "snapshot_id", "value", "slot"].filter((k) => args[k] !== void 0);
-      if (other.length) throw new ToolError(`select is a drag of its own: leave out ${other.join(", ")}.`);
-      return dragText(tab, { select: args.select, before: args.text_before, after: args.text_after }, args);
-    }
-    if (args.text_before !== void 0 || args.text_after !== void 0) throw new ToolError("text_before and text_after go with select: the text to select.");
-    if (!args.snapshot_id) return drag(tab, args);
-    const from = args.from_x !== void 0 && args.from_y !== void 0 ? { x: args.from_x, y: args.from_y } : null;
-    const to = args.x !== void 0 && args.y !== void 0 ? { x: args.x, y: args.y } : null;
-    if (!from && !to) throw new ToolError("snapshot_id is for points (from_x and from_y, or x and y) read off its image.");
-    const [f, t] = pointsOfImage(tab, args.snapshot_id, [from, to]);
-    return drag(tab, { ...args, ...f ? { from_x: f.x, from_y: f.y } : {}, ...t ? { x: t.x, y: t.y } : {} });
-  })
+  (args) => guard(
+    async () => {
+      const tab = await current().tab();
+      if (args.select !== void 0) {
+        const other = ["from", "from_x", "from_y", "to", "x", "y", "snapshot_id", "value", "slot"].filter((k) => args[k] !== void 0);
+        if (other.length) throw new ToolError(`select is a drag of its own: leave out ${other.join(", ")}.`);
+        return dragText(tab, { select: args.select, before: args.text_before, after: args.text_after }, args);
+      }
+      if (args.text_before !== void 0 || args.text_after !== void 0) throw new ToolError("text_before and text_after go with select: the text to select.");
+      if (!args.snapshot_id) return drag(tab, args);
+      const from = args.from_x !== void 0 && args.from_y !== void 0 ? { x: args.from_x, y: args.from_y } : null;
+      const to = args.x !== void 0 && args.y !== void 0 ? { x: args.x, y: args.y } : null;
+      if (!from && !to) throw new ToolError("snapshot_id is for points (from_x and from_y, or x and y) read off its image.");
+      const [f, t] = pointsOfImage(tab, args.snapshot_id, [from, to]);
+      return drag(tab, { ...args, ...f ? { from_x: f.x, from_y: f.y } : {}, ...t ? { x: t.x, y: t.y } : {} });
+    },
+    { videoTool: "drag" }
+  )
 );
 server.registerTool(
   "paste",
@@ -40330,15 +41217,18 @@ server.registerTool(
     description: "Pastes text with Ctrl+V from the browser's own clipboard (the machine's clipboard is never touched), clicking into the element first when an id is given. Faster than type for long text; the page sees a real paste of plain text, which an editor such as Google Docs gives the formatting at the caret.",
     inputSchema: inputOf({ text: external_exports.string(), id: id.optional(), ...replayOnly({ not_before: notBefore }), expect_focus: expectFocus, quiet })
   },
-  (args, extra) => guard(async () => {
-    refuseReplay(args, ["not_before"]);
-    return paste(await current().tab(), args.text, args.id, {
-      notBefore: parseNotBefore(args.not_before),
-      expectFocus: args.expect_focus,
-      quiet: args.quiet,
-      signal: extra.signal
-    });
-  })
+  (args, extra) => guard(
+    async () => {
+      refuseReplay(args, ["not_before"]);
+      return paste(await current().tab(), args.text, args.id, {
+        notBefore: parseNotBefore(args.not_before),
+        expectFocus: args.expect_focus,
+        quiet: args.quiet,
+        signal: extra.signal
+      });
+    },
+    { videoTool: "paste" }
+  )
 );
 server.registerTool(
   "clipboard",
@@ -40350,7 +41240,9 @@ server.registerTool(
       html: external_exports.boolean().optional().describe("Also show the HTML, up to 20,000 characters.")
     }
   },
-  (args) => guard(async () => clipboard(await current().tab(), args))
+  (args) => guard(async () => clipboard(await current().tab(), args), {
+    videoTool: args.set !== void 0 ? "clipboard" : void 0
+  })
 );
 server.registerTool(
   "fetch",
@@ -40391,6 +41283,74 @@ server.registerTool(
   () => guard(async () => recordStop(current()))
 );
 server.registerTool(
+  "video_start",
+  {
+    title: "Start video recording",
+    description: 'Records the selected tab to an MP4, with the synthetic pointer in it. Follows tab switches (tab_new, tab_select). idle: "cut" records only during browser action calls (not observe, view, screenshot, fetch) and a second after; "keep" is real time. A sidecar .events.ndjson marks each action call, click, pause/resume and tab switch. One per browser; ends itself after max_minutes of recorded time, when its tab closes, or when the browser closes. The video is not redacted: keep recordings out of version control if pages hold sensitive data.',
+    inputSchema: {
+      path: external_exports.string().optional().describe("Output .mp4 path, or a bare name saved into recordings/<name>.mp4 (default: recordings/video-<timestamp>.mp4). Never overwrites an existing file."),
+      fps: external_exports.number().int().min(1).max(60).describe("Frames per second, 1 to 60."),
+      idle: external_exports.enum(["cut", "keep"]).describe("cut: record only during browser action calls and a second after. keep: real time."),
+      width: external_exports.number().int().min(2).optional().describe("A smaller width in pixels; the page's own by default."),
+      height: external_exports.number().int().min(2).optional().describe("A smaller height in pixels; the page's own by default."),
+      audio: external_exports.boolean().optional().describe("Record the tab's sound (default true)."),
+      max_minutes: external_exports.number().int().min(1).max(MAX_MINUTES).optional().describe(`Minutes of recorded time before it ends itself, 1 to ${MAX_MINUTES} (default ${DEFAULT_MINUTES}).`)
+    }
+  },
+  (args) => guard(async () => {
+    const b = current();
+    const tab = await b.tab();
+    return b.video.start({
+      targetId: tab.targetId,
+      path: args.path,
+      fps: args.fps,
+      idle: args.idle,
+      width: args.width,
+      height: args.height,
+      audio: args.audio,
+      maxMinutes: args.max_minutes
+    });
+  })
+);
+server.registerTool(
+  "video_pause",
+  {
+    title: "Pause video recording",
+    description: "Pauses the video recording; its clock stops until video_resume, so the file has no gap.",
+    inputSchema: {}
+  },
+  () => guard(async () => current().video.pause())
+);
+server.registerTool(
+  "video_resume",
+  {
+    title: "Resume video recording",
+    description: "Resumes a video recording paused with video_pause.",
+    inputSchema: {}
+  },
+  () => guard(async () => current().video.resume())
+);
+server.registerTool(
+  "video_mark",
+  {
+    title: "Mark video timeline",
+    description: "Writes a labelled marker at the current time in the video recording's .events.ndjson sidecar.",
+    inputSchema: {
+      label: external_exports.string().describe("Short label for the marker (up to 500 characters).")
+    }
+  },
+  (args) => guard(async () => current().video.mark(args.label))
+);
+server.registerTool(
+  "video_stop",
+  {
+    title: "Stop video recording",
+    description: "Stops the video recording, finishes the MP4 and answers with its path, length, size, frames and events sidecar.",
+    inputSchema: {}
+  },
+  () => guard(async () => current().video.stop(), { isVideoStop: true })
+);
+server.registerTool(
   "fingerprint",
   {
     title: "Fingerprint report",
@@ -40401,14 +41361,24 @@ server.registerTool(
   (args) => guard(async () => fingerprint(current(), args.full))
 );
 process.stdin.on("end", () => {
+  let exitDelay = 250;
   if (browser && !browser.closed) {
     const b = browser;
-    const stop = b.recordingId ? b.conn.send("Browser.stopRecording", { recordingId: b.recordingId }, void 0, 2e3).catch(() => {
-    }) : Promise.resolve();
-    void stop.then(() => b.conn.send("Browser.close").catch(() => {
+    const stops = [];
+    if (b.recordingId) {
+      stops.push(b.conn.send("Browser.stopRecording", { recordingId: b.recordingId }, void 0, 2e3).catch(() => {
+      }));
+    }
+    const vid = b.video.activeId();
+    if (vid) {
+      exitDelay = 2200;
+      stops.push(b.conn.send("Browser.stopVideoRecording", { recordingId: vid }, void 0, 2e3).catch(() => {
+      }));
+    }
+    void Promise.all(stops).then(() => b.conn.send("Browser.close").catch(() => {
     }));
   }
-  setTimeout(() => process.exit(0), 250);
+  setTimeout(() => process.exit(0), exitDelay);
 });
 try {
   moveFromChromeleon();

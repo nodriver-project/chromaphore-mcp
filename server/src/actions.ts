@@ -79,20 +79,32 @@ async function settle(tab: Tab, armId?: number): Promise<any> {
   }
 }
 
-async function capture(tab: Tab, params: object): Promise<any> {
-  const full = { format: 'jpeg', quality: 80, scope: 'on', ...params };
+const DEFAULT_LISTING_OPTIONS = { offscreenMode: 'summary', scope: 'on' } as const;
+type ListingOptions = { offscreenMode: string; scope: string };
+
+async function capture(
+  tab: Tab,
+  params: { offscreenMode?: string; scope?: string; since?: string },
+): Promise<{ snap: any; opts: ListingOptions }> {
+  const full = { format: 'jpeg', quality: 80, ...DEFAULT_LISTING_OPTIONS, ...params };
   try {
-    return await onActivePage(() => tab.send('Page.captureAgentSnapshot', full, 30_000));
+    const snap = await onActivePage(() => tab.send('Page.captureAgentSnapshot', full, 30_000));
+    return { snap, opts: { offscreenMode: full.offscreenMode, scope: full.scope } };
   } catch (e) {
     if (!(e instanceof CdpError) || !/changed document during the capture/.test(e.message)) throw e;
     await settle(tab);
-    return onActivePage(() => tab.send('Page.captureAgentSnapshot', full, 30_000));
+    // A document change invalidated any `since` baseline; a fresh capture after
+    // an action falls back to the defaults, while an explicit observe keeps its own.
+    const retry = params.since ? { format: 'jpeg', quality: 80, ...DEFAULT_LISTING_OPTIONS } : full;
+    const snap = await onActivePage(() => tab.send('Page.captureAgentSnapshot', retry, 30_000));
+    return { snap, opts: { offscreenMode: retry.offscreenMode, scope: retry.scope } };
   }
 }
 
-function remember(tab: Tab, snap: any): string | null {
+function remember(tab: Tab, snap: any, opts: ListingOptions = DEFAULT_LISTING_OPTIONS): string | null {
   tab.letters = tab.browser.lettersFor(tab.targetId, snap.documentId);
   tab.lastListingId = snap.listingId;
+  tab.lastListingOptions = { ...opts };
   // An element shown before is kept as it is now, printed or not, as
   // NoDriver's ListingMemory.given keeps it: what a reply leaves out of a
   // delta (a title that changed with the name the same) is not a change the
@@ -191,14 +203,24 @@ async function afterAction(tab: Tab, said: string[], outcome?: any, quiet = fals
   for (const ev of outcome?.events ?? []) lines.push(`It led to ${describeEvent(ev)}.`);
   const work = (async () => {
     const report = await settle(tab, outcome?.actionId);
-    const snap = await capture(tab, tab.lastListingId ? { since: tab.lastListingId } : {});
-    return { report, snap };
+    const opts = tab.lastListingId ? tab.lastListingOptions : DEFAULT_LISTING_OPTIONS;
+    const nonDefault =
+      opts.offscreenMode !== DEFAULT_LISTING_OPTIONS.offscreenMode ||
+      opts.scope !== DEFAULT_LISTING_OPTIONS.scope;
+    let captured = await capture(tab, tab.lastListingId ? { since: tab.lastListingId, ...opts } : {});
+    // When an action leaves the baseline (e.g. a navigation to a new page),
+    // drop any carried non-default observe options back to the defaults so a
+    // one-off observe({ offscreen: "full" }) or scope: "all" does not stick.
+    if (nonDefault && (!captured.snap.delta || captured.snap.baseline === false)) {
+      captured = await capture(tab, {});
+    }
+    return { report, snap: captured.snap, opts: captured.opts };
   })();
   const r = await tab.untilDialog(work);
   if (r === 'dialog') return [...lines, ...noticesOf(tab), dialogLine(tab)].join('\n');
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
-  const id = remember(tab, r.snap);
+  const id = remember(tab, r.snap, r.opts);
   const whole = !quiet && (!r.snap.delta || r.snap.baseline === false);
   const change = quiet ? formatQuietChange(r.snap, tab.letters) : formatChange(r.snap, tab.id, tab.letters, shownOn(tab));
   lines.push(...noticesOf(tab), '', change, ...(await canvasAfter(tab, whole)));
@@ -208,8 +230,8 @@ async function afterAction(tab: Tab, said: string[], outcome?: any, quiet = fals
 export async function observe(tab: Tab, offscreen?: string, scope?: string): Promise<string> {
   assertNoDialog(tab);
   await settle(tab);
-  const snap = await capture(tab, { offscreenMode: offscreen ?? 'summary', scope: scope ?? 'on' });
-  const id = remember(tab, snap);
+  const { snap, opts } = await capture(tab, { offscreenMode: offscreen ?? 'summary', scope: scope ?? 'on' });
+  const id = remember(tab, snap, opts);
   const listing = formatListing(snap, tab.id, tab.letters, shownOn(tab));
   return withSnapshotId([...noticesOf(tab), listing, ...(await canvasListing(tab))].join('\n'), id);
 }
@@ -1422,7 +1444,7 @@ function keystrokesCall(o: { plan: Step[] | null; text?: string; exact?: boolean
     thinkingPauseMin: 300,
     thinkingPauseMax: 800,
     typoProbability: typos,
-    ...(typos ? { noTypos: NO_TYPOS } : {}),
+    ...(typos ? { noTypos: NO_TYPOS } : { typosAllowed: false }),
     ...(o.seed !== undefined ? { seed: o.seed } : {}),
   };
   let budget = 30_000;
@@ -1542,9 +1564,10 @@ async function planOnly(
       : 0;
   const whole = typeof r.durationMs === 'number' && Math.abs(r.durationMs - span) > 1 ? `; the plan's whole length with its pauses is ${Math.round(r.durationMs)} ms` : '';
   const typos = r.typosCorrected ? `, ${r.typosCorrected} typo(s) made and corrected` : '';
+  const fieldNote = o.plan || o.exact ? '' : ' (the typo decision follows the focused field, so type into one of the same kind)';
   const lines = [
     `Planned, nothing sent: from its first key down to its last key up it would take ${(span / 1000).toFixed(2)} s (${Math.round(span)} ms${whole}), ${tl.length} key event(s)${typos}.`,
-    `Seed ${r.seed} (${typosWords(r)}): pass it back as seed, with the same text or keys and speed, for this schedule (the typo decision follows the focused field, so type into one of the same kind).`,
+    `Seed ${r.seed} (${typosWords(r)}): pass it back as seed, with the same text or keys and speed, for this schedule${fieldNote}.`,
   ];
   if (o.keyLog !== undefined) lines.push(appendKeyLog(o.keyLog, r, true));
   return lines.join('\n');
@@ -1774,12 +1797,16 @@ export async function navigate(tab: Tab, opts: { url?: string; action?: string }
   }
   const lines = [said];
   const r = await tab.untilDialog(
-    (async () => ({ report: await settle(tab, armId), snap: await capture(tab, {}) }))(),
+    (async () => {
+      const report = await settle(tab, armId);
+      const { snap, opts } = await capture(tab, {});
+      return { report, snap, opts };
+    })(),
   );
   if (r === 'dialog') return [...lines, ...noticesOf(tab), dialogLine(tab)].join('\n');
   const unsettled = settleLine(r.report);
   if (unsettled) lines.push(unsettled);
-  const id = remember(tab, r.snap);
+  const id = remember(tab, r.snap, r.opts);
   lines.push(...noticesOf(tab), '', formatListing(r.snap, tab.id, tab.letters, shownOn(tab)), ...(await canvasListing(tab)));
   return withSnapshotId(lines.join('\n'), id);
 }

@@ -7,7 +7,7 @@
     {
       "name": "chromaphore",
       "source": "./plugin",
-      "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic recordings."
+      "description": "Drive the Chromaphore browser from Claude Code: page listings with ids, human-timed input, page reads through the browser, traffic and video recordings."
     }
   ]
 }

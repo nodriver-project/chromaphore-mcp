@@ -58,6 +58,8 @@ Google Docs draws each page on a canvas: the listing shows the body as `Canvas` 
 
 `record_start` / `record_stop` capture everything the browser sends and receives, from inside it, to a folder with a HAR, a grep-able `requests.txt` and a `summary.md`. Use it to see which requests a page makes, what an API returned, or why something failed. The files hold cookies: keep them out of version control.
 
+`video_start` / `video_pause` / `video_resume` / `video_mark` / `video_stop` record the selected tab to an MP4 (with the synthetic pointer and an `.events.ndjson` timeline sidecar marking actions, clicks, pauses and tab switches). Choose `fps` (1–60) and `idle` (`"cut"` records only during action calls and a second after; `"keep"` is real time); a recording also ends when its tab closes or `max_minutes` is reached. Recordings are not redacted: keep them out of version control when pages hold sensitive data.
+
 `screenshot` saves a PNG for the user or for a bug report (the model sees nothing); `view` is for you. `fingerprint` says what this launch shows sites about the machine.
 
 ## Profiles and fingerprints

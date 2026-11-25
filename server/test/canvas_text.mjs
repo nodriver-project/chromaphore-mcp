@@ -257,4 +257,14 @@ check(r.isError && /select is a drag of its own/.test(r.text), 'select with a st
 r = await call('click', { text_after: 'Filler line number 70 ' });
 check(r.isError && /^No place in the canvas text in view reads/.test(r.text), 'text below the view is not found (scroll it into view)');
 
+// After observe with offscreen "none", a quiet action stays comparable and
+// reports its canvas change lines.
+await call('eval_js', { expression: "window.doc[3] = [['Before offscreen none', FONT]]; redraw(3);" });
+await call('observe', { offscreen: 'none' });
+r = await call('click', { id: editId, quiet: true });
+check(
+  !/not comparable/.test(r.text) && /Canvas text changed:/.test(r.text),
+  `quiet action after observe(offscreen: "none") is comparable and shows canvas change (${r.text.replace(/\n+/g, ' | ')})`,
+);
+
 await finish();

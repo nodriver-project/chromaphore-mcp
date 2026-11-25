@@ -9,6 +9,8 @@ export interface CdpEvent {
   sessionId?: string;
 }
 
+export class ToolError extends Error {}
+
 // An error answer from the browser. `message` is the browser's own text, so
 // callers can match the documented error strings.
 export class CdpError extends Error {

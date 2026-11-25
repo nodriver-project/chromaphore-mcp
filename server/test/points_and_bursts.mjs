@@ -183,11 +183,13 @@ const addButton = idIn('button "Add row"');
 const notes = idIn('textbox "Notes"');
 const dropHere = idIn('button "Drop here"');
 check(!!addButton && !!notes && !!dropHere, `the new controls are listed (${addButton}, ${notes}, ${dropHere})`);
-// An action right after an observe with offscreen "full" gets no change
-// listing against it ("not comparable"), so the baseline is a plain observe.
-await call('observe');
+// An action right after observe with offscreen "full" stays comparable.
 r = await call('click', { id: addButton, quiet: true });
-check(/\d+ element change\(s\) not listed \(quiet\)/.test(r.text) && !/^\+ /m.test(r.text), `quiet said the added button was not listed (${r.text.replace(/\n+/g, ' | ')})`);
+check(/\d+ element change\(s\) not listed \(quiet\)/.test(r.text) && !/^\+ /m.test(r.text) && !/not comparable/.test(r.text), `quiet after observe(offscreen: "full") is comparable and counts changes (${r.text.replace(/\n+/g, ' | ')})`);
+// And right after observe with offscreen "none".
+await call('observe', { offscreen: 'none' });
+r = await call('click', { id: addButton, quiet: true });
+check(!/not comparable/.test(r.text), `quiet after observe(offscreen: "none") is comparable (${r.text.replace(/\n+/g, ' | ')})`);
 
 // A pause in a burst shows in the page's key times; without it the gap is shorter.
 const clearNotes = () => call('eval_js', { expression: "document.getElementById('ta').value = ''; window.__keys.length = 0" });

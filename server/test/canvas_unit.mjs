@@ -121,6 +121,132 @@ const scrolled = cv.linesOf(read([canvas(many.slice(0, 20))]));
 const sum = cv.canvasChange(before, scrolled);
 check(sum.length === 2 && /^Canvas text in view changed: 20 line\(s\) show now, from "Line 000 x+" to "Line 019 x+"\.$/.test(sum[1]), `more than 12 changed lines are one summary (${sum[1]})`);
 
+// Outlined text (strokeText + fillText at the same spot, e.g. Desmos / ECharts)
+// is listed once, preferring the fill; pure strokeText stays; adjacent
+// identical runs ("0" + "0" -> "00") are not merged; rotated outlined text
+// is also deduplicated.
+const rawRun = (text, x, y, extra = {}) => {
+  const advances = [];
+  for (let i = 0; i <= text.length; i++) advances.push(i * 10);
+  const w = text.length * 10;
+  return {
+    text,
+    font: '16px Arial',
+    baseline: { start: { x, y }, end: { x: x + w, y } },
+    width: w,
+    advances,
+    quad: [{ x, y: y - 12 }, { x: x + w, y: y - 12 }, { x: x + w, y: y + 4 }, { x, y: y + 4 }],
+    exact: true,
+    ...extra,
+  };
+};
+const rotStroke = rawRun('Axis', 300, 50, { stroke: true });
+rotStroke.baseline = { start: { x: 300, y: 50 }, end: { x: 300, y: 90 } };
+const rotFill = rawRun('Axis', 300, 50, { stroke: false });
+rotFill.baseline = { start: { x: 300, y: 50 }, end: { x: 300, y: 90 } };
+r = read([canvas([
+  rawRun('14', 10, 100, { stroke: true, exact: false, inexact: 'notFollowed' }),
+  rawRun('14', 10, 100, { stroke: false, exact: true }),
+  rawRun('Email', 60, 100, { stroke: false }),
+  rawRun('Email', 60, 100, { stroke: true }),
+  rawRun('Hollow', 140, 100, { stroke: true }),
+  rawRun('0', 220, 100),
+  rawRun('0', 230, 100),
+  rotStroke,
+  rotFill,
+])]);
+lines = cv.linesOf(r);
+check(
+  JSON.stringify(lines.map((l) => l.text)) === JSON.stringify(['Axis', '14 Email Hollow 00']) &&
+    lines[1].pieces[0].run.stroke === false &&
+    lines[1].pieces[0].run.exact === true,
+  `outlined text collapses to one preferring fill, pure stroke and side-by-side "00" stay (${JSON.stringify(lines.map((l) => l.text))})`,
+);
+
+// Private-use code points (PDF.js U+E0xx, icon glyphs, supplementary PUA) and
+// alpha: 0 runs are dropped, while real text after a PUA glyph keeps its map.
+const iconPrefix = rawRun('\uF007Profile', 20, 100);
+r = read([canvas([
+  rawRun('\uE012', 10, 80),
+  rawRun('\uE013', 20, 80),
+  rawRun('\u{F0001}', 30, 80),
+  rawRun('Ghost', 10, 140, { alpha: 0 }),
+  iconPrefix,
+])]);
+lines = cv.linesOf(r);
+aims = cv.aim(lines, 'Pro', undefined, 'file', '"Pro|file"');
+check(
+  lines.length === 1 && lines[0].text === 'Profile' && aims[0].point.x === 60,
+  `PUA and alpha:0 runs are dropped and advances map stays exact (${JSON.stringify(lines.map((l) => l.text))}, x=${aims[0]?.point.x})`,
+);
+
+// Zero-width spaces (canvas-editor starts lines with U+200B), BOM, word joiner
+// and soft hyphen are stripped in both piece() and normalise(), so cross-line
+// aiming matches; emoji ZWJ (U+200D) stays intact.
+r = read([canvas([
+  rawRun('\u200BFirst line', 10, 100),
+  rawRun('\u200BSecond\u00AD line', 10, 124),
+  rawRun('\u200B', 10, 148),
+  rawRun('Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}', 10, 172),
+])]);
+lines = cv.linesOf(r);
+aims = cv.aim(lines, 'line ', undefined, 'Second', '"line |Second"');
+check(
+  JSON.stringify(lines.map((l) => l.text)) === JSON.stringify(['First line', 'Second line', 'Family \u{1F468}\u200D\u{1F469}\u200D\u{1F467}']) &&
+    aims[0].point.x === 20,
+  `U+200B/soft-hyphen stripped for cross-line aiming, empty U+200B line dropped, ZWJ kept (${JSON.stringify(lines.map((l) => l.text))}, x=${aims[0]?.point.x})`,
+);
+
+// untrackedBitmap: noted both when no text was tracked and alongside tracked text.
+const untrackedEmpty = {
+  canvases: [{ context: '2d', shownRect: { x: 0, y: 0, width: 800, height: 600 }, exact: false, truncated: false, untrackedBitmap: true, runs: [] }],
+  framesLeftOut: [],
+  runsCut: 0,
+};
+const secEmpty = cv.canvasSection(untrackedEmpty, cv.linesOf(untrackedEmpty));
+check(
+  secEmpty.length === 2 && /untrackedBitmap/.test(secEmpty[1]),
+  `untrackedBitmap with no tracked runs still surfaces a note (${JSON.stringify(secEmpty)})`,
+);
+const untrackedWithText = {
+  canvases: [{ context: '2d', shownRect: { x: 0, y: 0, width: 800, height: 600 }, exact: false, truncated: false, untrackedBitmap: true, runs: [run('Label', 20, 40)] }],
+  framesLeftOut: [],
+  runsCut: 0,
+};
+const secWithText = cv.canvasSection(untrackedWithText, cv.linesOf(untrackedWithText)).join('\n');
+check(
+  secWithText.includes('  Label') && /untrackedBitmap/.test(secWithText),
+  'untrackedBitmap with tracked runs appends the note to the section',
+);
+const untrackedWebgl = {
+  canvases: [{ context: 'webgl2', shownRect: { x: 0, y: 0, width: 800, height: 600 }, exact: false, truncated: false, untrackedBitmap: true, runs: [] }],
+  framesLeftOut: [],
+  runsCut: 0,
+};
+check(
+  cv.canvasSection(untrackedWebgl, cv.linesOf(untrackedWebgl)).length === 0,
+  'non-2d untrackedBitmap canvas does not emit a note',
+);
+const transparentColor = {
+  canvases: [{
+    context: '2d',
+    shownRect: { x: 0, y: 0, width: 800, height: 600 },
+    exact: true,
+    truncated: false,
+    runs: [
+      { ...run('Invisible', 20, 40), color: 'rgba(0, 0, 0, 0)' },
+      { ...run('AlsoInvisible', 20, 60), color: 'transparent' },
+      { ...run('Visible', 20, 80), color: 'rgba(0, 0, 0, 0.5)' },
+    ],
+  }],
+  framesLeftOut: [],
+  runsCut: 0,
+};
+check(
+  JSON.stringify(cv.linesOf(transparentColor).map((l) => l.text)) === JSON.stringify(['Visible']),
+  'transparent / rgba(..., 0) color runs are dropped',
+);
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(failures ? `${failures} FAILED` : 'all passed');
 process.exit(failures ? 1 : 0);

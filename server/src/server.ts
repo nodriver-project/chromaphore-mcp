@@ -8,10 +8,11 @@ import * as act from './actions.js';
 import { Browser, ToolError } from './browser.js';
 import * as whole from './browser_tools.js';
 import { CdpError } from './cdp.js';
+import { DEFAULT_MINUTES, MAX_MINUTES } from './video.js';
 import { checkInstall, install } from './install.js';
 import { moveFromChromeleon, removePendingReleases, sweepPageCounts } from './paths.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 // The replay options (not_before, type's seed, and a burst's check against
 // the text it must leave) need values only a caller's own pipeline makes, so
@@ -39,7 +40,7 @@ Where there is no element to aim at, such as text an editor draws itself (Google
 ${REPLAY ? `
 ${REPLAY_GUIDE}
 ` : ''}
-Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. clipboard reads or sets the browser's own clipboard. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. The skill chromaphore:browser has more.`;
+Native controls have their own tools (select, fill_date, pick_color, upload, drag); use them rather than typing into such fields. clipboard reads or sets the browser's own clipboard. To read a page or call an API without a tab, use fetch. To see a page's network traffic, wrap the steps in record_start and record_stop. To record a tab to MP4 video with a timeline sidecar, use video_start, video_pause, video_resume, video_mark and video_stop. The skill chromaphore:browser has more.`;
 
 const server = new McpServer({ name: 'browser', version: VERSION }, { instructions: INSTRUCTIONS });
 let browser: Browser | null = null;
@@ -54,15 +55,40 @@ function current(): Browser {
   return browser;
 }
 
-async function guard(fn: () => Promise<Result | string>): Promise<Result> {
+function withNotice(r: Result, notice: string | null): Result {
+  if (!notice) return r;
+  const i = r.content.findIndex((c) => c.type === 'text');
+  if (i >= 0) {
+    const content = r.content.slice();
+    const cur = content[i] as { type: 'text'; text: string };
+    content[i] = { type: 'text', text: `${notice}\n${cur.text}` };
+    return { ...r, content };
+  }
+  return { ...r, content: [{ type: 'text', text: notice }, ...r.content] };
+}
+
+async function guard(
+  fn: () => Promise<Result | string>,
+  opts?: { videoTool?: string; isVideoStop?: boolean },
+): Promise<Result> {
+  const b = browser && !browser.closed ? browser : null;
+  const markTool = opts?.videoTool && b ? opts.videoTool : null;
+  if (markTool) await b!.video.toolStarted(markTool);
+  let res: Result;
   try {
     const r = await fn();
-    return typeof r === 'string' ? text(r) : r;
+    res = typeof r === 'string' ? text(r) : r;
   } catch (e) {
-    if (e instanceof ToolError) return text(e.message, true);
-    if (e instanceof CdpError) return text(`${e.method} failed: ${e.message}`, true);
-    return text(e instanceof Error ? e.message : String(e), true);
+    if (e instanceof ToolError) res = text(e.message, true);
+    else if (e instanceof CdpError) res = text(`${e.method} failed: ${e.message}`, true);
+    else res = text(e instanceof Error ? e.message : String(e), true);
   }
+  if (markTool) await b!.video.toolEnded(markTool, !res.isError);
+  if (!opts?.isVideoStop) {
+    const active = browser && !browser.closed ? browser : b;
+    res = withNotice(res, active?.video.takeEndedNotice() ?? null);
+  }
+  return res;
 }
 
 const id = z.string().describe('An element id from a listing, such as a12.');
@@ -204,14 +230,17 @@ server.registerTool(
   () =>
     guard(async () => {
       if (!browser || browser.closed) return 'No browser is open.';
-      await browser.close();
-      if (!browser.temp) return `Closed. Profile kept at ${browser.profile}`;
+      const videoSaved = await browser.close();
+      const suffix = videoSaved ? `\n${videoSaved}` : '';
+      if (!browser.temp) return `Closed. Profile kept at ${browser.profile}${suffix}`;
       // The launcher's reaper deletes it once the browser has exited.
       const deadline = Date.now() + 10_000;
       while (fs.existsSync(browser.profile) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
-      return fs.existsSync(browser.profile)
-        ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).`
-        : 'Closed. The temporary profile is deleted.';
+      return (
+        (fs.existsSync(browser.profile)
+          ? `Closed. The temporary profile is deleted once the browser's last process exits (${browser.profile}).`
+          : 'Closed. The temporary profile is deleted.') + suffix
+      );
     }),
 );
 
@@ -234,10 +263,13 @@ server.registerTool(
     inputSchema: { url: z.string().optional() },
   },
   (args) =>
-    guard(async () => {
-      const tab = await current().newTab();
-      return args.url ? act.navigate(tab, { url: args.url }) : `Tab ${tab.id} is open and selected.`;
-    }),
+    guard(
+      async () => {
+        const tab = await current().newTab();
+        return args.url ? act.navigate(tab, { url: args.url }) : `Tab ${tab.id} is open and selected.`;
+      },
+      { videoTool: 'tab_new' },
+    ),
 );
 
 server.registerTool(
@@ -247,17 +279,20 @@ server.registerTool(
     description: 'Brings a tab to the front and makes it the one the other tools act on. Tabs the page opened appear in tab_list.',
     inputSchema: { tab: z.string().describe('A tab id from tab_list, such as t2.') },
   },
-  (args) => guard(async () => act.observe(await current().select(args.tab))),
+  (args) => guard(async () => act.observe(await current().select(args.tab)), { videoTool: 'tab_select' }),
 );
 
 server.registerTool(
   'tab_close',
   { title: 'Close a tab', description: 'Closes a tab.', inputSchema: { tab: z.string() } },
   (args) =>
-    guard(async () => {
-      await current().closeTab(args.tab);
-      return `Closed ${args.tab}.`;
-    }),
+    guard(
+      async () => {
+        await current().closeTab(args.tab);
+        return `Closed ${args.tab}.`;
+      },
+      { videoTool: 'tab_close' },
+    ),
 );
 
 server.registerTool(
@@ -272,10 +307,13 @@ server.registerTool(
     },
   },
   (args) =>
-    guard(async () => {
-      if (!args.url && !args.action) throw new ToolError('Give a url or an action.');
-      return act.navigate(await current().tab(), args);
-    }),
+    guard(
+      async () => {
+        if (!args.url && !args.action) throw new ToolError('Give a url or an action.');
+        return act.navigate(await current().tab(), args);
+      },
+      { videoTool: 'navigate' },
+    ),
 );
 
 server.registerTool(
@@ -344,13 +382,16 @@ server.registerTool(
     },
   },
   (args) =>
-    guard(async () => {
-      const tab = await current().tab();
-      const place = textPlace(args, 'Click');
-      if (place) return act.clickText(tab, place, args);
-      const p = inView(tab, point(args, 'Click'), args.snapshot_id);
-      return p ? act.clickAt(tab, p, args) : act.click(tab, args.id!, args);
-    }),
+    guard(
+      async () => {
+        const tab = await current().tab();
+        const place = textPlace(args, 'Click');
+        if (place) return act.clickText(tab, place, args);
+        const p = inView(tab, point(args, 'Click'), args.snapshot_id);
+        return p ? act.clickAt(tab, p, args) : act.click(tab, args.id!, args);
+      },
+      { videoTool: 'click' },
+    ),
 );
 
 server.registerTool(
@@ -368,13 +409,16 @@ server.registerTool(
     },
   },
   (args) =>
-    guard(async () => {
-      const tab = await current().tab();
-      const place = textPlace(args, 'Hover over');
-      if (place) return act.hoverText(tab, place);
-      const p = inView(tab, point(args, 'Hover'), args.snapshot_id);
-      return p ? act.hoverAt(tab, p) : act.hover(tab, args.id!);
-    }),
+    guard(
+      async () => {
+        const tab = await current().tab();
+        const place = textPlace(args, 'Hover over');
+        if (place) return act.hoverText(tab, place);
+        const p = inView(tab, point(args, 'Hover'), args.snapshot_id);
+        return p ? act.hoverAt(tab, p) : act.hover(tab, args.id!);
+      },
+      { videoTool: 'hover' },
+    ),
 );
 
 server.registerTool(
@@ -438,21 +482,24 @@ server.registerTool(
     }),
   },
   (args, extra) =>
-    guard(async () => {
-      refuseReplay(args, ['not_before', 'seed', 'dry_run', 'key_log']);
-      if (!REPLAY && args.text !== undefined && args.keys) {
-        throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
-      }
-      return act.type(await current().tab(), {
-        ...args,
-        notBefore: act.parseNotBefore(args.not_before),
-        expectFocus: args.expect_focus,
-        signal: extra.signal,
-        dryRun: args.dry_run,
-        keyLog: args.key_log,
-        replay: REPLAY,
-      });
-    }),
+    guard(
+      async () => {
+        refuseReplay(args, ['not_before', 'seed', 'dry_run', 'key_log']);
+        if (!REPLAY && args.text !== undefined && args.keys) {
+          throw new ToolError(`Nothing was typed: give text or keys, not both. Checking a burst against the text it must leave needs ${SETTING} turned on.`);
+        }
+        return act.type(await current().tab(), {
+          ...args,
+          notBefore: act.parseNotBefore(args.not_before),
+          expectFocus: args.expect_focus,
+          signal: extra.signal,
+          dryRun: args.dry_run,
+          keyLog: args.key_log,
+          replay: REPLAY,
+        });
+      },
+      { videoTool: args.dry_run ? undefined : 'type' },
+    ),
 );
 
 server.registerTool(
@@ -469,15 +516,18 @@ server.registerTool(
     }),
   },
   (args, extra) =>
-    guard(async () => {
-      refuseReplay(args, ['not_before']);
-      return act.press(await current().tab(), args.keys, args.times, {
-        notBefore: act.parseNotBefore(args.not_before),
-        expectFocus: args.expect_focus,
-        quiet: args.quiet,
-        signal: extra.signal,
-      });
-    }),
+    guard(
+      async () => {
+        refuseReplay(args, ['not_before']);
+        return act.press(await current().tab(), args.keys, args.times, {
+          notBefore: act.parseNotBefore(args.not_before),
+          expectFocus: args.expect_focus,
+          quiet: args.quiet,
+          signal: extra.signal,
+        });
+      },
+      { videoTool: 'press' },
+    ),
 );
 
 server.registerTool(
@@ -494,7 +544,7 @@ server.registerTool(
       quiet,
     },
   },
-  (args) => guard(async () => act.scroll(await current().tab(), args)),
+  (args) => guard(async () => act.scroll(await current().tab(), args), { videoTool: 'scroll' }),
 );
 
 server.registerTool(
@@ -504,7 +554,7 @@ server.registerTool(
     description: 'Accepts or dismisses the alert, confirm, prompt or leave-page dialog open on the selected tab.',
     inputSchema: { accept: z.boolean(), text: z.string().optional().describe("A prompt dialog's answer.") },
   },
-  (args) => guard(async () => act.answerDialog(await current().tab(), args.accept, args.text)),
+  (args) => guard(async () => act.answerDialog(await current().tab(), args.accept, args.text), { videoTool: 'dialog' }),
 );
 
 server.registerTool(
@@ -529,10 +579,13 @@ server.registerTool(
     inputSchema: { expression: z.string() },
   },
   (args) =>
-    guard(async () => {
-      const r = await act.evaluate(await current().tab(), args.expression);
-      return text(r.text, r.isError);
-    }),
+    guard(
+      async () => {
+        const r = await act.evaluate(await current().tab(), args.expression);
+        return text(r.text, r.isError);
+      },
+      { videoTool: 'eval_js' },
+    ),
 );
 
 server.registerTool(
@@ -543,7 +596,7 @@ server.registerTool(
       'Picks options in a <select> the way a person does (opens its list and clicks, or uses the keys when the list cannot open). values: one for a dropdown, the exact set for a multiple list; each matches an option by its visible text or its value. A wrong value is refused with the options there are.',
     inputSchema: { id, values: z.array(z.string()).min(1) },
   },
-  (args) => guard(async () => act.select(await current().tab(), args.id, args.values)),
+  (args) => guard(async () => act.select(await current().tab(), args.id, args.values), { videoTool: 'select' }),
 );
 
 server.registerTool(
@@ -554,7 +607,7 @@ server.registerTool(
       'Fills an input of type date, time, datetime-local, month or week part by part, as typed by a person. value as the field\'s value attribute takes it: 2024-05-03, 14:30, 2024-05-03T14:30, 2024-05, 2024-W18.',
     inputSchema: { id, value: z.string() },
   },
-  (args) => guard(async () => act.fillDate(await current().tab(), args.id, args.value)),
+  (args) => guard(async () => act.fillDate(await current().tab(), args.id, args.value), { videoTool: 'fill_date' }),
 );
 
 server.registerTool(
@@ -564,7 +617,7 @@ server.registerTool(
     description: 'Sets an input of type color through its own picker. value as #rrggbb.',
     inputSchema: { id, value: z.string().regex(/^#[0-9a-fA-F]{6}$/) },
   },
-  (args) => guard(async () => act.pickColor(await current().tab(), args.id, args.value)),
+  (args) => guard(async () => act.pickColor(await current().tab(), args.id, args.value), { videoTool: 'pick_color' }),
 );
 
 server.registerTool(
@@ -575,7 +628,7 @@ server.registerTool(
       'Clicks a file field (or the button or label that opens one) and answers its file chooser with these files, as a person picking them would. Paths are on this machine; relative ones are from the working folder. For a folder field, one folder.',
     inputSchema: { id, files: z.array(z.string()).min(1) },
   },
-  (args) => guard(async () => act.upload(await current().tab(), args.id, args.files)),
+  (args) => guard(async () => act.upload(await current().tab(), args.id, args.files), { videoTool: 'upload' }),
 );
 
 server.registerTool(
@@ -602,21 +655,24 @@ server.registerTool(
     },
   },
   (args) =>
-    guard(async () => {
-      const tab = await current().tab();
-      if (args.select !== undefined) {
-        const other = ['from', 'from_x', 'from_y', 'to', 'x', 'y', 'snapshot_id', 'value', 'slot'].filter((k) => (args as any)[k] !== undefined);
-        if (other.length) throw new ToolError(`select is a drag of its own: leave out ${other.join(', ')}.`);
-        return act.dragText(tab, { select: args.select, before: args.text_before, after: args.text_after }, args);
-      }
-      if (args.text_before !== undefined || args.text_after !== undefined) throw new ToolError('text_before and text_after go with select: the text to select.');
-      if (!args.snapshot_id) return act.drag(tab, args);
-      const from = args.from_x !== undefined && args.from_y !== undefined ? { x: args.from_x, y: args.from_y } : null;
-      const to = args.x !== undefined && args.y !== undefined ? { x: args.x, y: args.y } : null;
-      if (!from && !to) throw new ToolError('snapshot_id is for points (from_x and from_y, or x and y) read off its image.');
-      const [f, t] = act.pointsOfImage(tab, args.snapshot_id, [from, to]);
-      return act.drag(tab, { ...args, ...(f ? { from_x: f.x, from_y: f.y } : {}), ...(t ? { x: t.x, y: t.y } : {}) });
-    }),
+    guard(
+      async () => {
+        const tab = await current().tab();
+        if (args.select !== undefined) {
+          const other = ['from', 'from_x', 'from_y', 'to', 'x', 'y', 'snapshot_id', 'value', 'slot'].filter((k) => (args as any)[k] !== undefined);
+          if (other.length) throw new ToolError(`select is a drag of its own: leave out ${other.join(', ')}.`);
+          return act.dragText(tab, { select: args.select, before: args.text_before, after: args.text_after }, args);
+        }
+        if (args.text_before !== undefined || args.text_after !== undefined) throw new ToolError('text_before and text_after go with select: the text to select.');
+        if (!args.snapshot_id) return act.drag(tab, args);
+        const from = args.from_x !== undefined && args.from_y !== undefined ? { x: args.from_x, y: args.from_y } : null;
+        const to = args.x !== undefined && args.y !== undefined ? { x: args.x, y: args.y } : null;
+        if (!from && !to) throw new ToolError('snapshot_id is for points (from_x and from_y, or x and y) read off its image.');
+        const [f, t] = act.pointsOfImage(tab, args.snapshot_id, [from, to]);
+        return act.drag(tab, { ...args, ...(f ? { from_x: f.x, from_y: f.y } : {}), ...(t ? { x: t.x, y: t.y } : {}) });
+      },
+      { videoTool: 'drag' },
+    ),
 );
 
 server.registerTool(
@@ -628,15 +684,18 @@ server.registerTool(
     inputSchema: inputOf({ text: z.string(), id: id.optional(), ...replayOnly({ not_before: notBefore }), expect_focus: expectFocus, quiet }),
   },
   (args, extra) =>
-    guard(async () => {
-      refuseReplay(args, ['not_before']);
-      return act.paste(await current().tab(), args.text, args.id, {
-        notBefore: act.parseNotBefore(args.not_before),
-        expectFocus: args.expect_focus,
-        quiet: args.quiet,
-        signal: extra.signal,
-      });
-    }),
+    guard(
+      async () => {
+        refuseReplay(args, ['not_before']);
+        return act.paste(await current().tab(), args.text, args.id, {
+          notBefore: act.parseNotBefore(args.not_before),
+          expectFocus: args.expect_focus,
+          quiet: args.quiet,
+          signal: extra.signal,
+        });
+      },
+      { videoTool: 'paste' },
+    ),
 );
 
 server.registerTool(
@@ -650,7 +709,10 @@ server.registerTool(
       html: z.boolean().optional().describe('Also show the HTML, up to 20,000 characters.'),
     },
   },
-  (args) => guard(async () => act.clipboard(await current().tab(), args)),
+  (args) =>
+    guard(async () => act.clipboard(await current().tab(), args), {
+      videoTool: args.set !== undefined ? 'clipboard' : undefined,
+    }),
 );
 
 server.registerTool(
@@ -706,6 +768,90 @@ server.registerTool(
 );
 
 server.registerTool(
+  'video_start',
+  {
+    title: 'Start video recording',
+    description:
+      'Records the selected tab to an MP4, with the synthetic pointer in it. Follows tab switches (tab_new, tab_select). idle: "cut" records only during browser action calls (not observe, view, screenshot, fetch) and a second after; "keep" is real time. A sidecar .events.ndjson marks each action call, click, pause/resume and tab switch. One per browser; ends itself after max_minutes of recorded time, when its tab closes, or when the browser closes. The video is not redacted: keep recordings out of version control if pages hold sensitive data.',
+    inputSchema: {
+      path: z
+        .string()
+        .optional()
+        .describe('Output .mp4 path, or a bare name saved into recordings/<name>.mp4 (default: recordings/video-<timestamp>.mp4). Never overwrites an existing file.'),
+      fps: z.number().int().min(1).max(60).describe('Frames per second, 1 to 60.'),
+      idle: z.enum(['cut', 'keep']).describe('cut: record only during browser action calls and a second after. keep: real time.'),
+      width: z.number().int().min(2).optional().describe("A smaller width in pixels; the page's own by default."),
+      height: z.number().int().min(2).optional().describe("A smaller height in pixels; the page's own by default."),
+      audio: z.boolean().optional().describe("Record the tab's sound (default true)."),
+      max_minutes: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_MINUTES)
+        .optional()
+        .describe(`Minutes of recorded time before it ends itself, 1 to ${MAX_MINUTES} (default ${DEFAULT_MINUTES}).`),
+    },
+  },
+  (args) =>
+    guard(async () => {
+      const b = current();
+      const tab = await b.tab();
+      return b.video.start({
+        targetId: tab.targetId,
+        path: args.path,
+        fps: args.fps,
+        idle: args.idle,
+        width: args.width,
+        height: args.height,
+        audio: args.audio,
+        maxMinutes: args.max_minutes,
+      });
+    }),
+);
+
+server.registerTool(
+  'video_pause',
+  {
+    title: 'Pause video recording',
+    description: 'Pauses the video recording; its clock stops until video_resume, so the file has no gap.',
+    inputSchema: {},
+  },
+  () => guard(async () => current().video.pause()),
+);
+
+server.registerTool(
+  'video_resume',
+  {
+    title: 'Resume video recording',
+    description: 'Resumes a video recording paused with video_pause.',
+    inputSchema: {},
+  },
+  () => guard(async () => current().video.resume()),
+);
+
+server.registerTool(
+  'video_mark',
+  {
+    title: 'Mark video timeline',
+    description: "Writes a labelled marker at the current time in the video recording's .events.ndjson sidecar.",
+    inputSchema: {
+      label: z.string().describe('Short label for the marker (up to 500 characters).'),
+    },
+  },
+  (args) => guard(async () => current().video.mark(args.label)),
+);
+
+server.registerTool(
+  'video_stop',
+  {
+    title: 'Stop video recording',
+    description: 'Stops the video recording, finishes the MP4 and answers with its path, length, size, frames and events sidecar.',
+    inputSchema: {},
+  },
+  () => guard(async () => current().video.stop(), { isVideoStop: true }),
+);
+
+server.registerTool(
   'fingerprint',
   {
     title: 'Fingerprint report',
@@ -721,14 +867,21 @@ server.registerTool(
 // once this process is gone. Stopping a recording first keeps its files whole,
 // and Browser.close makes the close quicker.
 process.stdin.on('end', () => {
+  let exitDelay = 250;
   if (browser && !browser.closed) {
     const b = browser;
-    const stop = b.recordingId
-      ? b.conn.send('Browser.stopRecording', { recordingId: b.recordingId }, undefined, 2_000).catch(() => {})
-      : Promise.resolve();
-    void stop.then(() => b.conn.send('Browser.close').catch(() => {}));
+    const stops: Promise<unknown>[] = [];
+    if (b.recordingId) {
+      stops.push(b.conn.send('Browser.stopRecording', { recordingId: b.recordingId }, undefined, 2_000).catch(() => {}));
+    }
+    const vid = b.video.activeId();
+    if (vid) {
+      exitDelay = 2_200;
+      stops.push(b.conn.send('Browser.stopVideoRecording', { recordingId: vid }, undefined, 2_000).catch(() => {}));
+    }
+    void Promise.all(stops).then(() => b.conn.send('Browser.close').catch(() => {}));
   }
-  setTimeout(() => process.exit(0), 250);
+  setTimeout(() => process.exit(0), exitDelay);
 });
 
 // What the plugin kept under its name before 0.2.0 (paths.ts): renames

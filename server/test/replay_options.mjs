@@ -362,7 +362,7 @@ const nothing = (s) => s[0] === '' && s[1] === 0 && s[2] === 0;
     r = await call('type', { keys: burst, dry_run: true, key_log: log });
     s = await state({ js });
     const planned = /^Planned, nothing sent: from its first key down to its last key up it would take [\d.]+ s \((\d+) ms[^)]*\), (\d+) key event\(s\)/.exec(r.text);
-    const seedOf = /^Seed (\d+) \(typos (?:not )?allowed\): pass it back as seed/m.exec(r.text);
+    const seedOf = /^Seed (\d+) \(typos not allowed\): pass it back as seed/m.exec(r.text);
     check(!r.isError && !!planned && !!seedOf && nothing(s), `[on] dry_run plans the burst, says its length and seed, and sends nothing (${JSON.stringify(s)}; ${r.text.split('\n').slice(0, 2).join(' | ')})`);
     const plan = lines();
     check(plan.length === 1 && plan[0].dryRun === true && plan[0].seed === Number(seedOf?.[1]) && plan[0].events.length === Number(planned?.[2]) && new RegExp(`Logged ${plan[0].events.length} key event\\(s\\) as planned to `).test(r.text), `[on] dry_run with key_log logs the plan, its folder made (${plan.length} line(s))`);
@@ -372,8 +372,8 @@ const nothing = (s) => s[0] === '' && s[1] === 0 && s[2] === 0;
     const real = lines()[1];
     const sameKeys = !!real && real.events.length === plan[0].events.length && real.events.every((e, i) => e.key === plan[0].events[i].key && e.event === plan[0].events[i].event && Math.abs(e.timeMs - plan[0].events[i].timeMs) < 20);
     check(!r.isError && s[0] === 'Plan ahead!' && sameKeys, `[on] typing with the seed dry_run gave plays that schedule: the same key events within 20 ms (${real?.events.length} events; ${JSON.stringify(s[0])})`);
-    check(!!real && typeof real.startEpochMs === 'number' && real.start === new Date(real.startEpochMs).toISOString() && real.seed === Number(seedOf?.[1]) && typeof real.durationMs === 'number' && typeof real.typosAllowed === 'boolean' && real.typos === 0 && !real.stopped && !real.dryRun, `[on] the key log's line has the start, seed, length, typo decision and count (${JSON.stringify({ ...real, events: real?.events.length })})`);
-    check(new RegExp(`Logged ${real?.events.length} key event\\(s\\) to .*keys\\.jsonl\\.`).test(r.text) && /^Seed \d+ \(typos (not )?allowed\)/m.test(r.text), '[on] the answer says how many events went to which file, and the seed');
+    check(!!real && typeof real.startEpochMs === 'number' && real.start === new Date(real.startEpochMs).toISOString() && real.seed === Number(seedOf?.[1]) && typeof real.durationMs === 'number' && real.typosAllowed === false && real.typos === 0 && !real.stopped && !real.dryRun, `[on] the key log's line has the start, seed, length, typo decision (false for burst) and count (${JSON.stringify({ ...real, events: real?.events.length })})`);
+    check(new RegExp(`Logged ${real?.events.length} key event\\(s\\) to .*keys\\.jsonl\\.`).test(r.text) && /^Seed \d+ \(typos not allowed\)/m.test(r.text), '[on] the answer says how many events went to which file, and the seed (typos not allowed)');
     // The time line from the timeline, against the page's own clock.
     await call('eval_js', { expression: reset });
     const when3 = Date.now() + 2500;
@@ -384,9 +384,12 @@ const nothing = (s) => s[0] === '' && s[1] === 0 && s[2] === 0;
     check(!!t && from >= when3 && Math.abs(from - when3 - Number(t[2])) <= 1 && Math.abs(firstKey - from) <= 50 && to - from === Number(t[4]) && to > from, `[on] with not_before the answer times the first key down and the last key up from the timeline (${t?.[0]}; the page saw the first key ${firstKey - from} ms off)`);
     // The seed said for a call that gave none, and the one given.
     r = await call('type', { text: 'x', exact: true, quiet: true });
-    const drawn = /^Seed (\d+) \(typos (not )?allowed\)/m.exec(r.text);
+    const drawn = /^Seed (\d+) \(typos not allowed\)/m.exec(r.text);
     r = await call('type', { text: 'y', exact: true, seed: 4242, quiet: true });
-    check(!!drawn && Number(drawn[1]) > 0 && /^Seed 4242 \(typos (not )?allowed\)/m.test(r.text), `[on] the answer says the seed used, drawn (${drawn?.[1]}) or given`);
+    check(!!drawn && Number(drawn[1]) > 0 && /^Seed 4242 \(typos not allowed\)/m.test(r.text), `[on] the answer says the seed used (typos not allowed), drawn (${drawn?.[1]}) or given`);
+    // Plain text dry_run (exact off) on a normal field says typos allowed.
+    const plainDry = await call('type', { text: 'hello', dry_run: true });
+    check(/^Seed \d+ \(typos allowed\):.*focused field/m.test(plainDry.text), `[on] plain text dry_run says typos allowed with focused-field note (${plainDry.text.split('\n')[1]})`);
     // What dry_run cannot go with, refused before anything moves; the text
     // check still applies.
     await call('eval_js', { expression: reset });
