@@ -4,6 +4,7 @@
 **Support:**  [Discussions](https://github.com/nodriver-project/Chromaphore-mcp/discussions) · [Browser releases](https://github.com/nodriver-project/Chromaphore-Browser/releases)
 
 A Claude Code plugin that drives the [Chromaphore browser](https://github.com/nodriver-project/Chromaphore-Browser), a Chromium build with human-timed input commands and a per-launch fingerprint, through its custom DevTools protocol commands.
+![A Node script calls chromaphore-mcp's tools over stdio (observe, click by id, scroll) to find the cheapest Humor book on books.toscrape.com in Chromaphore 2.1.0 on Windows, filmed by the server's own video_start tool](docs/demo.gif)
 
 What Claude gets:
 
